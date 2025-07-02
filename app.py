@@ -39,7 +39,6 @@ def create_app():
     from blueprints.opciones import opciones_bp
     from blueprints.trabajadores import trabajadores_bp
     from blueprints.contratistas import contratistas_bp
-    from blueprints.tarjas import tarjas_bp
     from blueprints.colaboradores import colaboradores_bp
     from blueprints.permisos import permisos_bp
     from blueprints.rendimientopropio import rendimientopropio_bp
@@ -53,7 +52,6 @@ def create_app():
     app.register_blueprint(trabajadores_bp, url_prefix='/api/trabajadores')
     app.register_blueprint(opciones_bp, url_prefix="/api/opciones")
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
-    app.register_blueprint(tarjas_bp, url_prefix="/api/tarjas")
     app.register_blueprint(colaboradores_bp, url_prefix='/api/colaboradores')
     app.register_blueprint(permisos_bp, url_prefix='/api/permisos')
     app.register_blueprint(rendimientopropio_bp, url_prefix='/api/rendimientopropio')

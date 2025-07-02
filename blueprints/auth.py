@@ -66,7 +66,7 @@ def login():
                 SELECT 1 
                 FROM usuario_pivot_app_usuario p 
                 WHERE p.id_usuario = u.id 
-                AND p.id_app = 2
+                AND p.id_app = 3
             )
         """
         cursor.execute(sql, (usuario,))
