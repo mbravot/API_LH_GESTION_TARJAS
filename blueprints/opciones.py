@@ -233,36 +233,6 @@ def obtener_tiporendimiento():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# Obtener sucursales del usuario logueado
-@opciones_bp.route('/sucursales', methods=['GET', 'OPTIONS'])
-@jwt_required()
-def obtener_sucursales():
-    if request.method == 'OPTIONS':
-        return '', 200
-    try:
-        usuario_id = get_jwt_identity()
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-        
-        # Obtener sucursales permitidas para el usuario
-        cursor.execute("""
-            SELECT DISTINCT s.id, s.nombre, s.ubicacion
-            FROM general_dim_sucursal s
-            JOIN usuario_pivot_sucursal_usuario p ON s.id = p.id_sucursal
-            WHERE p.id_usuario = %s
-            ORDER BY s.nombre ASC
-        """, (usuario_id,))
-
-        sucursales = cursor.fetchall()
-        cursor.close()
-        conn.close()
-
-        if not sucursales:
-            return jsonify([]), 200
-
-        return jsonify(sucursales), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 # Obtener porcentajes de trabajadores
 @opciones_bp.route('/porcentajes', methods=['GET'])

@@ -7,6 +7,7 @@ from datetime import date
 
 auth_bp = Blueprint('auth_bp', __name__)
 
+# Registrar usuario
 @auth_bp.route('/register', methods=['POST'])
 def register():
     data = request.json
@@ -42,6 +43,7 @@ def register():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# Login
 @auth_bp.route('/login', methods=['POST'])
 def login():
     try:
@@ -57,9 +59,16 @@ def login():
 
         # Buscar usuario y verificar estado y acceso a la app
         sql = """
-            SELECT u.*, s.nombre as sucursal_nombre
+            SELECT u.*, s.nombre as sucursal_nombre,
+                   CASE 
+                       WHEN u.id_colaborador IS NOT NULL THEN 
+                           CONCAT(col.nombre, ' ', col.apellido_paterno)
+                       ELSE 
+                           u.usuario
+                   END AS nombre_usuario
             FROM general_dim_usuario u
             LEFT JOIN general_dim_sucursal s ON u.id_sucursalactiva = s.id
+            LEFT JOIN general_dim_colaborador col ON u.id_colaborador = col.id
             WHERE u.usuario = %s 
             AND u.id_estado = 1
             AND EXISTS (
@@ -94,6 +103,7 @@ def login():
         return jsonify({
             "access_token": access_token,
             "usuario": user['usuario'],
+            "nombre_usuario": user['nombre_usuario'],
             "id_sucursal": user['id_sucursalactiva'],
             "sucursal_nombre": user['sucursal_nombre'],
             "id_rol": user['id_rol'],
@@ -103,6 +113,7 @@ def login():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# Refresh token
 @auth_bp.route('/refresh', methods=['POST'])
 @jwt_required(refresh=True)
 def refresh():
@@ -157,6 +168,7 @@ def refresh():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# Cambiar clave
 @auth_bp.route('/cambiar-clave', methods=['POST'])
 @jwt_required()
 def cambiar_clave():
@@ -198,6 +210,7 @@ def cambiar_clave():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# Cambiar sucursal
 @auth_bp.route('/cambiar-sucursal', methods=['POST'])
 @jwt_required()
 def cambiar_sucursal():
@@ -251,5 +264,36 @@ def cambiar_sucursal():
             "sucursal_nombre": sucursal['nombre'] if sucursal else None
         }), 200
 
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Obtener sucursales del usuario logueado
+@auth_bp.route('/sucursales', methods=['GET', 'OPTIONS'])
+@jwt_required()
+def obtener_sucursales():
+    if request.method == 'OPTIONS':
+        return '', 200
+    try:
+        usuario_id = get_jwt_identity()
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Obtener sucursales permitidas para el usuario
+        cursor.execute("""
+            SELECT DISTINCT s.id, s.nombre, s.ubicacion
+            FROM general_dim_sucursal s
+            JOIN usuario_pivot_sucursal_usuario p ON s.id = p.id_sucursal
+            WHERE p.id_usuario = %s
+            ORDER BY s.nombre ASC
+        """, (usuario_id,))
+
+        sucursales = cursor.fetchall()
+        cursor.close()
+        conn.close()
+
+        if not sucursales:
+            return jsonify([]), 200
+
+        return jsonify(sucursales), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500

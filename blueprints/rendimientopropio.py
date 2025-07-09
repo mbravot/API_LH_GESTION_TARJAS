@@ -39,8 +39,9 @@ def listar_rendimientos_propios_por_actividad(id_actividad):
         actividad = cursor.fetchone()
         if not actividad:
             return jsonify({"error": "Actividad no encontrada o no pertenece a tu sucursal"}), 404
-        if actividad['id_estadoactividad'] != 1:
-            return jsonify({"rendimientos": []}), 200
+        # Comentamos esta validación para permitir ver rendimientos en cualquier estado
+        # if actividad['id_estadoactividad'] != 1:
+        #     return jsonify({"rendimientos": []}), 200
         # Obtener nombre del CECO
         nombre_ceco = None
         if actividad['id_ceco']:
@@ -51,7 +52,7 @@ def listar_rendimientos_propios_por_actividad(id_actividad):
         # Obtener rendimientos propios
         cursor.execute("""
             SELECT r.id, r.id_colaborador, c.nombre as nombre_colaborador, c.apellido_paterno, c.apellido_materno,
-                   r.horas_trabajadas
+                   r.horas_trabajadas, r.rendimiento, r.horas_extras, r.id_bono
             FROM tarja_fact_rendimientopropio r
             JOIN general_dim_colaborador c ON r.id_colaborador = c.id
             WHERE r.id_actividad = %s
@@ -69,9 +70,16 @@ def listar_rendimientos_propios_por_actividad(id_actividad):
             "actividad": {
                 "fecha": str(actividad['fecha']),
                 "labor": actividad['labor'],
-                "ceco": nombre_ceco
+                "ceco": nombre_ceco,
+                "estado": actividad['id_estadoactividad']
             },
-            "rendimientos": rendimientos
+            "rendimientos": rendimientos,
+            "debug": {
+                "id_actividad": id_actividad,
+                "cantidad_rendimientos": len(rendimientos),
+                "estado_actividad": actividad['id_estadoactividad'],
+                "mensaje": "No hay rendimientos registrados para esta actividad" if not rendimientos else f"Se encontraron {len(rendimientos)} rendimientos"
+            }
         }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500

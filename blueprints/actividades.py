@@ -26,12 +26,30 @@ def obtener_actividades_por_sucursal(id_sucursal):
                 a.id_tiporendimiento,
                 a.id_contratista,
                 a.id_sucursalactiva,
+                a.id_tipoceco,
+                a.id_usuario,
                 a.hora_inicio,
                 a.hora_fin,
                 a.tarifa,
                 l.nombre AS labor, 
+                u.nombre AS nombre_unidad,
                 co.nombre AS contratista, 
                 tr.nombre AS tipo_rend,
+                tc.nombre AS nombre_tipoceco,
+                CASE 
+                    WHEN usr.id_colaborador IS NOT NULL THEN 
+                        CONCAT(col.nombre, ' ', col.apellido_paterno)
+                    ELSE 
+                        usr.usuario
+                END AS nombre_usuario,
+                CASE 
+                    WHEN a.id_tipoceco = 1 THEN (SELECT ce.nombre FROM tarja_fact_cecoadministrativo ca JOIN general_dim_ceco ce ON ca.id_ceco = ce.id WHERE ca.id_actividad = a.id LIMIT 1)
+                    WHEN a.id_tipoceco = 2 THEN (SELECT ce.nombre FROM tarja_fact_cecoproductivo cp JOIN general_dim_ceco ce ON cp.id_ceco = ce.id WHERE cp.id_actividad = a.id LIMIT 1)
+                    WHEN a.id_tipoceco = 3 THEN (SELECT ce.nombre FROM tarja_fact_cecomaquinaria cm JOIN general_dim_ceco ce ON cm.id_ceco = ce.id WHERE cm.id_actividad = a.id LIMIT 1)
+                    WHEN a.id_tipoceco = 4 THEN (SELECT ce.nombre FROM tarja_fact_cecoinversion ci JOIN general_dim_ceco ce ON ci.id_ceco = ce.id WHERE ci.id_actividad = a.id LIMIT 1)
+                    WHEN a.id_tipoceco = 5 THEN (SELECT ce.nombre FROM tarja_fact_cecoriego cr JOIN general_dim_ceco ce ON cr.id_ceco = ce.id WHERE cr.id_actividad = a.id LIMIT 1)
+                    ELSE NULL
+                END AS nombre_ceco,
                 EXISTS (
                     SELECT 1 
                     FROM tarja_fact_rendimientopropio rp 
@@ -47,10 +65,14 @@ def obtener_actividades_por_sucursal(id_sucursal):
                 ) AS tiene_rendimiento
             FROM tarja_fact_actividad a
             LEFT JOIN general_dim_labor l ON a.id_labor = l.id
+            LEFT JOIN tarja_dim_unidad u ON a.id_unidad = u.id
             LEFT JOIN general_dim_contratista co ON a.id_contratista = co.id
             LEFT JOIN tarja_dim_tiporendimiento tr ON a.id_tiporendimiento = tr.id
+            LEFT JOIN general_dim_cecotipo tc ON a.id_tipoceco = tc.id
+            LEFT JOIN general_dim_usuario usr ON a.id_usuario = usr.id
+            LEFT JOIN general_dim_colaborador col ON usr.id_colaborador = col.id
             WHERE a.id_sucursalactiva = %s
-            AND (a.id_estadoactividad = 1 OR a.id_estadoactividad = 2)  -- 1: creada, 2: revisada
+            AND (a.id_estadoactividad = 1 OR a.id_estadoactividad = 2 OR a.id_estadoactividad = 3)  -- 1: creada, 2: revisada, 3: aprobada
             GROUP BY a.id
             ORDER BY a.fecha DESC
         """
@@ -146,6 +168,47 @@ def editar_actividad(actividad_id):
         conn.close()
 
         return jsonify({"message": "Actividad actualizada correctamente"}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# 🚀 Endpoint para cambiar solo el estado de una actividad
+@actividades_bp.route('/<string:actividad_id>/estado', methods=['PUT'])
+@jwt_required()
+def cambiar_estado_actividad(actividad_id):
+    try:
+        usuario_id = get_jwt_identity()
+        data = request.json
+
+        # Solo validar que se envíe el nuevo estado
+        if 'id_estadoactividad' not in data:
+            return jsonify({"error": "El campo id_estadoactividad es requerido"}), 400
+
+        nuevo_estado = data.get('id_estadoactividad')
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Solo actualizar el estado
+        sql = """
+            UPDATE tarja_fact_actividad 
+            SET id_estadoactividad = %s
+            WHERE id = %s AND id_usuario = %s
+        """
+        valores = (nuevo_estado, actividad_id, usuario_id)
+
+        cursor.execute(sql, valores)
+        conn.commit()
+
+        if cursor.rowcount == 0:
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "Actividad no encontrada o no tienes permiso para editarla"}), 404
+
+        cursor.close()
+        conn.close()
+
+        return jsonify({"message": "Estado de actividad actualizado correctamente"}), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500

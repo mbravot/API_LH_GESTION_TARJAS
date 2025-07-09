@@ -11,163 +11,309 @@ def format_fecha(fecha):
         return fecha.strftime('%Y-%m-%d')
     return fecha
 
-# Listar permisos (solo de la sucursal activa del usuario)
-@permisos_bp.route('', methods=['GET'])
+# 📌 Obtener permisos del usuario autenticado
+@permisos_bp.route('/usuario/actual', methods=['GET'])
 @jwt_required()
-def listar_permisos():
+def obtener_permisos_usuario_actual():
     try:
         usuario_id = get_jwt_identity()
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        # Obtener sucursal activa del usuario
-        cursor.execute("SELECT id_sucursalactiva FROM general_dim_usuario WHERE id = %s", (usuario_id,))
-        usuario = cursor.fetchone()
-        if not usuario or not usuario['id_sucursalactiva']:
-            return jsonify({"error": "No se encontró la sucursal activa del usuario"}), 400
-        id_sucursal = usuario['id_sucursalactiva']
-        # Listar permisos de colaboradores de la sucursal y del usuario autenticado
+        
+        # Obtener permisos del usuario autenticado
         cursor.execute("""
-            SELECT p.*, t.nombre AS tipo_permiso, c.nombre AS nombre_colaborador, c.apellido_paterno, c.apellido_materno, e.nombre AS estado_permiso
-            FROM tarja_fact_permiso p
-            JOIN tarja_dim_permisotipo t ON p.id_tipopermiso = t.id
-            JOIN general_dim_colaborador c ON p.id_colaborador = c.id
-            JOIN tarja_dim_permisoestado e ON p.id_estadopermiso = e.id
-            WHERE c.id_sucursal = %s AND p.id_usuario = %s
-            ORDER BY p.fecha DESC, p.timestamp DESC
-        """, (id_sucursal, usuario_id))
+            SELECT 
+                p.id,
+                p.nombre,
+                p.id_app,
+                p.id_estado
+            FROM usuario_dim_permiso p
+            JOIN usuario_pivot_permiso_usuario ppu ON p.id = ppu.id_permiso
+            WHERE ppu.id_usuario = %s AND p.id_estado = 1
+            ORDER BY p.nombre ASC
+        """, (usuario_id,))
         permisos = cursor.fetchall()
+        
         cursor.close()
         conn.close()
-        # Formatear fechas
-        for permiso in permisos:
-            if 'fecha' in permiso and permiso['fecha']:
-                permiso['fecha'] = format_fecha(permiso['fecha'])
-            if 'timestamp' in permiso and permiso['timestamp']:
-                permiso['timestamp'] = format_fecha(permiso['timestamp'])
+        
         return jsonify(permisos), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# Crear permiso
-@permisos_bp.route('/', methods=['POST'])
+# 📌 Verificar si el usuario tiene un permiso específico
+@permisos_bp.route('/usuario/verificar/<string:nombre_permiso>', methods=['GET'])
 @jwt_required()
-def crear_permiso():
+def verificar_permiso_usuario(nombre_permiso):
     try:
-        data = request.json
         usuario_id = get_jwt_identity()
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        # Generar id UUID
-        permiso_id = str(uuid.uuid4())
-        sql = """
-            INSERT INTO tarja_fact_permiso (
-                id, id_usuario, timestamp, fecha, id_tipopermiso, id_colaborador, horas, id_estadopermiso
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """
-        now = datetime.now()
-        cursor.execute(sql, (
-            permiso_id,
-            usuario_id,
-            now,
-            data['fecha'],
-            data['id_tipopermiso'],
-            data['id_colaborador'],
-            data['horas'],
-            data['id_estadopermiso']
-        ))
-        conn.commit()
+        
+        # Verificar si el usuario tiene el permiso específico
+        cursor.execute("""
+            SELECT 
+                p.id,
+                p.nombre,
+                p.id_app,
+                p.id_estado
+            FROM usuario_dim_permiso p
+            JOIN usuario_pivot_permiso_usuario ppu ON p.id = ppu.id_permiso
+            WHERE ppu.id_usuario = %s AND p.nombre = %s AND p.id_estado = 1
+        """, (usuario_id, nombre_permiso))
+        permiso = cursor.fetchone()
+        
         cursor.close()
         conn.close()
-        return jsonify({"message": "Permiso creado correctamente", "id": permiso_id}), 201
+        
+        if permiso:
+            return jsonify({"tiene_permiso": True, "permiso": permiso}), 200
+        else:
+            return jsonify({"tiene_permiso": False, "permiso": None}), 200
+            
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# Editar permiso
-@permisos_bp.route('/<string:permiso_id>', methods=['PUT'])
+# 📌 Verificar múltiples permisos del usuario de una vez
+@permisos_bp.route('/usuario/verificar-multiples', methods=['POST'])
 @jwt_required()
-def editar_permiso(permiso_id):
+def verificar_multiples_permisos():
     try:
         data = request.json
+        permisos_a_verificar = data.get('permisos', [])
+        
+        if not permisos_a_verificar:
+            return jsonify({"error": "Debe proporcionar una lista de permisos a verificar"}), 400
+        
+        usuario_id = get_jwt_identity()
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        # Verificar que el permiso existe
-        cursor.execute("SELECT * FROM tarja_fact_permiso WHERE id = %s", (permiso_id,))
-        permiso = cursor.fetchone()
-        if not permiso:
-            return jsonify({"error": "Permiso no encontrado"}), 404
-        # Actualizar campos editables
-        sql = """
-            UPDATE tarja_fact_permiso
-            SET fecha = %s, id_tipopermiso = %s, id_colaborador = %s, horas = %s, id_estadopermiso = %s
-            WHERE id = %s
-        """
-        cursor.execute(sql, (
-            data.get('fecha', permiso['fecha']),
-            data.get('id_tipopermiso', permiso['id_tipopermiso']),
-            data.get('id_colaborador', permiso['id_colaborador']),
-            data.get('horas', permiso['horas']),
-            data.get('id_estadopermiso', permiso['id_estadopermiso']),
-            permiso_id
-        ))
-        conn.commit()
+        
+        # Crear placeholders para la consulta IN
+        placeholders = ','.join(['%s'] * len(permisos_a_verificar))
+        
+        # Verificar múltiples permisos del usuario
+        cursor.execute(f"""
+            SELECT 
+                p.nombre,
+                p.id,
+                p.id_app,
+                p.id_estado
+            FROM usuario_dim_permiso p
+            JOIN usuario_pivot_permiso_usuario ppu ON p.id = ppu.id_permiso
+            WHERE ppu.id_usuario = %s AND p.nombre IN ({placeholders}) AND p.id_estado = 1
+        """, (usuario_id, *permisos_a_verificar))
+        
+        permisos_encontrados = cursor.fetchall()
+        nombres_permisos_encontrados = [p['nombre'] for p in permisos_encontrados]
+        
+        # Crear respuesta con todos los permisos solicitados
+        resultado = {}
+        for permiso in permisos_a_verificar:
+            resultado[permiso] = {
+                "tiene_permiso": permiso in nombres_permisos_encontrados,
+                "permiso": next((p for p in permisos_encontrados if p['nombre'] == permiso), None)
+            }
+        
         cursor.close()
         conn.close()
-        return jsonify({"message": "Permiso actualizado correctamente"}), 200
+        
+        return jsonify(resultado), 200
+        
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# Eliminar permiso
-@permisos_bp.route('/<string:permiso_id>', methods=['DELETE'])
+# 📌 Obtener roles del usuario (permisos agrupados por tipo)
+@permisos_bp.route('/usuario/roles', methods=['GET'])
 @jwt_required()
-def eliminar_permiso(permiso_id):
+def obtener_roles_usuario():
     try:
+        usuario_id = get_jwt_identity()
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("DELETE FROM tarja_fact_permiso WHERE id = %s", (permiso_id,))
-        conn.commit()
-        cursor.close()
-        conn.close()
-        return jsonify({"message": "Permiso eliminado correctamente"}), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@permisos_bp.route('/tipos', methods=['GET'])
-@jwt_required()
-def obtener_tipos_permiso():
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT id, nombre FROM tarja_dim_permisotipo ORDER BY nombre ASC")
-        tipos = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        return jsonify(tipos), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@permisos_bp.route('/<string:permiso_id>', methods=['GET'])
-@jwt_required()
-def obtener_permiso_por_id(permiso_id):
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        
+        # Obtener permisos del usuario agrupados por tipo de rol
         cursor.execute("""
-            SELECT p.*, t.nombre AS tipo_permiso, c.nombre AS nombre_colaborador, c.apellido_paterno, c.apellido_materno, e.nombre AS estado_permiso
-            FROM tarja_fact_permiso p
-            JOIN tarja_dim_permisotipo t ON p.id_tipopermiso = t.id
-            JOIN general_dim_colaborador c ON p.id_colaborador = c.id
-            JOIN tarja_dim_permisoestado e ON p.id_estadopermiso = e.id
-            WHERE p.id = %s
-        """, (permiso_id,))
-        permiso = cursor.fetchone()
+            SELECT 
+                p.nombre,
+                p.id,
+                p.id_app,
+                p.id_estado,
+                CASE 
+                    WHEN p.nombre LIKE '%revisador%' THEN 'revisador'
+                    WHEN p.nombre LIKE '%aprobador%' THEN 'aprobador'
+                    WHEN p.nombre LIKE '%gestionador%' THEN 'gestionador'
+                    WHEN p.nombre LIKE '%admin%' THEN 'administrador'
+                    ELSE 'otro'
+                END as tipo_rol
+            FROM usuario_dim_permiso p
+            JOIN usuario_pivot_permiso_usuario ppu ON p.id = ppu.id_permiso
+            WHERE ppu.id_usuario = %s AND p.id_estado = 1
+            ORDER BY p.nombre ASC
+        """, (usuario_id,))
+        
+        permisos = cursor.fetchall()
+        
+        # Agrupar por tipo de rol
+        roles = {}
+        for permiso in permisos:
+            tipo_rol = permiso['tipo_rol']
+            if tipo_rol not in roles:
+                roles[tipo_rol] = []
+            roles[tipo_rol].append(permiso)
+        
         cursor.close()
         conn.close()
+        
+        return jsonify({
+            "roles": roles,
+            "permisos_totales": len(permisos),
+            "tipos_roles": list(roles.keys())
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# 📌 Obtener todos los permisos disponibles
+@permisos_bp.route('/disponibles', methods=['GET'])
+@jwt_required()
+def obtener_permisos_disponibles():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Obtener todos los permisos activos
+        cursor.execute("""
+            SELECT 
+                id,
+                nombre,
+                id_app,
+                id_estado
+            FROM usuario_dim_permiso
+            WHERE id_estado = 1
+            ORDER BY nombre ASC
+        """)
+        permisos = cursor.fetchall()
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify(permisos), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# 📌 Asignar permiso a usuario
+@permisos_bp.route('/usuario/asignar', methods=['POST'])
+@jwt_required()
+def asignar_permiso_usuario():
+    try:
+        data = request.json
+        usuario_id = data.get('id_usuario')
+        permiso_id = data.get('id_permiso')
+        
+        if not usuario_id or not permiso_id:
+            return jsonify({"error": "Faltan parámetros requeridos: id_usuario, id_permiso"}), 400
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Verificar que el usuario y permiso existen
+        cursor.execute("SELECT id FROM general_dim_usuario WHERE id = %s", (usuario_id,))
+        usuario = cursor.fetchone()
+        if not usuario:
+            return jsonify({"error": "Usuario no encontrado"}), 404
+            
+        cursor.execute("SELECT id FROM usuario_dim_permiso WHERE id = %s", (permiso_id,))
+        permiso = cursor.fetchone()
         if not permiso:
             return jsonify({"error": "Permiso no encontrado"}), 404
-        if 'fecha' in permiso and permiso['fecha']:
-            permiso['fecha'] = format_fecha(permiso['fecha'])
-        if 'timestamp' in permiso and permiso['timestamp']:
-            permiso['timestamp'] = format_fecha(permiso['timestamp'])
-        return jsonify(permiso), 200
+        
+        # Verificar que no existe ya la asignación
+        cursor.execute("""
+            SELECT id FROM usuario_pivot_permiso_usuario 
+            WHERE id_usuario = %s AND id_permiso = %s
+        """, (usuario_id, permiso_id))
+        asignacion_existente = cursor.fetchone()
+        
+        if asignacion_existente:
+            return jsonify({"error": "El usuario ya tiene asignado este permiso"}), 400
+        
+        # Asignar permiso al usuario
+        cursor.execute("""
+            INSERT INTO usuario_pivot_permiso_usuario (id_usuario, id_permiso)
+            VALUES (%s, %s)
+        """, (usuario_id, permiso_id))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({"message": "Permiso asignado correctamente al usuario"}), 201
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# 📌 Remover permiso de usuario
+@permisos_bp.route('/usuario/remover', methods=['DELETE'])
+@jwt_required()
+def remover_permiso_usuario():
+    try:
+        data = request.json
+        usuario_id = data.get('id_usuario')
+        permiso_id = data.get('id_permiso')
+        
+        if not usuario_id or not permiso_id:
+            return jsonify({"error": "Faltan parámetros requeridos: id_usuario, id_permiso"}), 400
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Remover permiso del usuario
+        cursor.execute("""
+            DELETE FROM usuario_pivot_permiso_usuario 
+            WHERE id_usuario = %s AND id_permiso = %s
+        """, (usuario_id, permiso_id))
+        
+        if cursor.rowcount == 0:
+            return jsonify({"error": "El usuario no tiene asignado este permiso"}), 404
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({"message": "Permiso removido correctamente del usuario"}), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# 📌 Obtener usuarios con sus permisos
+@permisos_bp.route('/usuarios/permisos', methods=['GET'])
+@jwt_required()
+def obtener_usuarios_con_permisos():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Obtener usuarios con sus permisos
+        cursor.execute("""
+            SELECT 
+                u.id,
+                u.usuario,
+                u.id_colaborador,
+                CONCAT(c.nombre, ' ', c.apellido_paterno) as nombre_completo,
+                GROUP_CONCAT(p.nombre SEPARATOR ', ') as permisos
+            FROM general_dim_usuario u
+            LEFT JOIN general_dim_colaborador c ON u.id_colaborador = c.id
+            LEFT JOIN usuario_pivot_permiso_usuario ppu ON u.id = ppu.id_usuario
+            LEFT JOIN usuario_dim_permiso p ON ppu.id_permiso = p.id AND p.id_estado = 1
+            GROUP BY u.id
+            ORDER BY u.usuario ASC
+        """)
+        usuarios = cursor.fetchall()
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify(usuarios), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
