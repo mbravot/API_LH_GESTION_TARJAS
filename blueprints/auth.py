@@ -60,15 +60,10 @@ def login():
         # Buscar usuario y verificar estado y acceso a la app
         sql = """
             SELECT u.*, s.nombre as sucursal_nombre,
-                   CASE 
-                       WHEN u.id_colaborador IS NOT NULL THEN 
-                           CONCAT(col.nombre, ' ', col.apellido_paterno)
-                       ELSE 
-                           u.usuario
-                   END AS nombre_usuario
+                   u.usuario AS nombre_usuario
             FROM general_dim_usuario u
             LEFT JOIN general_dim_sucursal s ON u.id_sucursalactiva = s.id
-            LEFT JOIN general_dim_colaborador col ON u.id_colaborador = col.id
+
             WHERE u.usuario = %s 
             AND u.id_estado = 1
             AND EXISTS (

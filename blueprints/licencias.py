@@ -36,7 +36,7 @@ def listar_licencias():
                 c.apellido_paterno,
                 c.apellido_materno,
                 c.id_sucursal
-            FROM tarja_fact_licencia_medica l
+            FROM tarja_fact_licenciamedica l
             INNER JOIN general_dim_colaborador c ON l.id_colaborador = c.id
             WHERE c.id_sucursal = %s
         """
@@ -89,7 +89,7 @@ def obtener_licencia_por_id(licencia_id):
                 c.apellido_paterno,
                 c.apellido_materno,
                 c.id_sucursal
-            FROM tarja_fact_licencia_medica l
+            FROM tarja_fact_licenciamedica l
             INNER JOIN general_dim_colaborador c ON l.id_colaborador = c.id
             WHERE l.id = %s AND c.id_sucursal = %s
         """, (licencia_id, id_sucursal))
@@ -152,7 +152,7 @@ def crear_licencia():
         
         # Verificar que no haya solapamiento de fechas
         cursor.execute("""
-            SELECT id FROM tarja_fact_licencia_medica 
+            SELECT id FROM tarja_fact_licenciamedica 
             WHERE id_colaborador = %s AND (
                 (fecha_inicio <= %s AND fecha_fin >= %s) OR
                 (fecha_inicio <= %s AND fecha_fin >= %s) OR
@@ -165,7 +165,7 @@ def crear_licencia():
         
         # Crear licencia
         sql = """
-            INSERT INTO tarja_fact_licencia_medica (id_colaborador, fecha_inicio, fecha_fin)
+            INSERT INTO tarja_fact_licenciamedica (id_colaborador, fecha_inicio, fecha_fin)
             VALUES (%s, %s, %s)
         """
         cursor.execute(sql, (data['id_colaborador'], fecha_inicio, fecha_fin))
@@ -205,7 +205,7 @@ def editar_licencia(licencia_id):
         # Obtener licencia actual
         cursor.execute("""
             SELECT l.*, c.id_sucursal
-            FROM tarja_fact_licencia_medica l
+            FROM tarja_fact_licenciamedica l
             INNER JOIN general_dim_colaborador c ON l.id_colaborador = c.id
             WHERE l.id = %s AND c.id_sucursal = %s
         """, (licencia_id, id_sucursal))
@@ -236,7 +236,7 @@ def editar_licencia(licencia_id):
         
         # Verificar que no haya solapamiento de fechas (excluyendo la licencia actual)
         cursor.execute("""
-            SELECT id FROM tarja_fact_licencia_medica 
+            SELECT id FROM tarja_fact_licenciamedica 
             WHERE id_colaborador = %s AND id != %s AND (
                 (fecha_inicio <= %s AND fecha_fin >= %s) OR
                 (fecha_inicio <= %s AND fecha_fin >= %s) OR
@@ -249,7 +249,7 @@ def editar_licencia(licencia_id):
         
         # Actualizar licencia
         sql = """
-            UPDATE tarja_fact_licencia_medica
+            UPDATE tarja_fact_licenciamedica
             SET fecha_inicio = %s, fecha_fin = %s
             WHERE id = %s
         """
@@ -285,7 +285,7 @@ def eliminar_licencia(licencia_id):
         # Verificar que la licencia existe y pertenece a un colaborador de la sucursal
         cursor.execute("""
             SELECT l.id
-            FROM tarja_fact_licencia_medica l
+            FROM tarja_fact_licenciamedica l
             INNER JOIN general_dim_colaborador c ON l.id_colaborador = c.id
             WHERE l.id = %s AND c.id_sucursal = %s
         """, (licencia_id, id_sucursal))
@@ -294,7 +294,7 @@ def eliminar_licencia(licencia_id):
             return jsonify({"error": "Licencia no encontrada"}), 404
         
         # Eliminar licencia
-        cursor.execute("DELETE FROM tarja_fact_licencia_medica WHERE id = %s", (licencia_id,))
+        cursor.execute("DELETE FROM tarja_fact_licenciamedica WHERE id = %s", (licencia_id,))
         
         conn.commit()
         cursor.close()
@@ -334,7 +334,7 @@ def obtener_licencias_colaborador(id_colaborador):
                 c.apellido_paterno,
                 c.apellido_materno,
                 c.id_sucursal
-            FROM tarja_fact_licencia_medica l
+            FROM tarja_fact_licenciamedica l
             INNER JOIN general_dim_colaborador c ON l.id_colaborador = c.id
             WHERE l.id_colaborador = %s AND c.id_sucursal = %s
             ORDER BY l.fecha_inicio DESC

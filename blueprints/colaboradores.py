@@ -28,14 +28,12 @@ def listar_colaboradores():
                 a.nombre as nombre_afp,
                 p.nombre as nombre_prevision,
                 s1.nombre as nombre_sucursal,
-                s2.nombre as nombre_sucursal_contrato,
                 e.nombre as nombre_estado
             FROM general_dim_colaborador c
             LEFT JOIN rrhh_dim_cargo car ON c.id_cargo = car.id
             LEFT JOIN rrhh_dim_afp a ON c.id_afp = a.id
             LEFT JOIN rrhh_dim_prevision p ON c.id_prevision = p.id
             LEFT JOIN general_dim_sucursal s1 ON c.id_sucursal = s1.id
-            LEFT JOIN general_dim_sucursal s2 ON c.id_sucursalcontrato = s2.id
             LEFT JOIN general_dim_estado e ON c.id_estado = e.id
             WHERE c.id_sucursal = %s
             ORDER BY c.nombre, c.apellido_paterno, c.apellido_materno ASC
@@ -71,9 +69,9 @@ def crear_colaborador():
         sql = """
             INSERT INTO general_dim_colaborador (
                 id, nombre, apellido_paterno, apellido_materno, rut, codigo_verificador,
-                id_sucursal, id_sucursalcontrato, id_cargo, fecha_nacimiento, fecha_incorporacion,
+                id_sucursal, id_cargo, fecha_nacimiento, fecha_incorporacion,
                 id_prevision, id_afp, id_estado
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         cursor.execute(sql, (
             colaborador_id,
@@ -83,7 +81,6 @@ def crear_colaborador():
             data.get('rut'),
             data.get('codigo_verificador'),
             id_sucursal,
-            data['id_sucursalcontrato'],
             data.get('id_cargo'),
             data.get('fecha_nacimiento'),
             data.get('fecha_incorporacion'),
@@ -120,7 +117,6 @@ def editar_colaborador(colaborador_id):
         nombre = data.get('nombre', colaborador_actual['nombre'])
         apellido_paterno = data.get('apellido_paterno', colaborador_actual['apellido_paterno'])
         apellido_materno = data.get('apellido_materno', colaborador_actual['apellido_materno'])
-        id_sucursalcontrato = data.get('id_sucursalcontrato', colaborador_actual['id_sucursalcontrato'])
         id_cargo = data.get('id_cargo', colaborador_actual['id_cargo'])
         fecha_nacimiento = data.get('fecha_nacimiento', colaborador_actual['fecha_nacimiento'])
         fecha_incorporacion = data.get('fecha_incorporacion', colaborador_actual['fecha_incorporacion'])
@@ -131,7 +127,7 @@ def editar_colaborador(colaborador_id):
         sql = """
             UPDATE general_dim_colaborador
             SET nombre = %s, apellido_paterno = %s, apellido_materno = %s, rut = %s, codigo_verificador = %s,
-                id_sucursalcontrato = %s, id_cargo = %s, fecha_nacimiento = %s, fecha_incorporacion = %s,
+                id_cargo = %s, fecha_nacimiento = %s, fecha_incorporacion = %s,
                 id_prevision = %s, id_afp = %s, id_estado = %s
             WHERE id = %s
         """
@@ -141,7 +137,6 @@ def editar_colaborador(colaborador_id):
             apellido_materno,
             rut,
             codigo_verificador,
-            id_sucursalcontrato,
             id_cargo,
             fecha_nacimiento,
             fecha_incorporacion,
@@ -172,14 +167,12 @@ def obtener_colaborador_por_id(colaborador_id):
                 a.nombre as nombre_afp,
                 p.nombre as nombre_prevision,
                 s1.nombre as nombre_sucursal,
-                s2.nombre as nombre_sucursal_contrato,
                 e.nombre as nombre_estado
             FROM general_dim_colaborador c
             LEFT JOIN rrhh_dim_cargo car ON c.id_cargo = car.id
             LEFT JOIN rrhh_dim_afp a ON c.id_afp = a.id
             LEFT JOIN rrhh_dim_prevision p ON c.id_prevision = p.id
             LEFT JOIN general_dim_sucursal s1 ON c.id_sucursal = s1.id
-            LEFT JOIN general_dim_sucursal s2 ON c.id_sucursalcontrato = s2.id
             LEFT JOIN general_dim_estado e ON c.id_estado = e.id
             WHERE c.id = %s
         """, (colaborador_id,))
@@ -192,6 +185,95 @@ def obtener_colaborador_por_id(colaborador_id):
             return jsonify({"error": "Colaborador no encontrado"}), 404
             
         return jsonify(colaborador), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Obtener opciones para crear colaborador
+@colaboradores_bp.route('/opciones-crear', methods=['GET'])
+@jwt_required()
+def obtener_opciones_crear_colaborador():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Obtener sucursales
+        cursor.execute("SELECT id, nombre FROM general_dim_sucursal ORDER BY nombre")
+        sucursales = cursor.fetchall()
+        
+        # Obtener cargos
+        cursor.execute("SELECT id, nombre FROM rrhh_dim_cargo ORDER BY nombre")
+        cargos = cursor.fetchall()
+        
+        # Obtener previsiones
+        cursor.execute("SELECT id, nombre FROM rrhh_dim_prevision ORDER BY nombre")
+        previsiones = cursor.fetchall()
+        
+        # Obtener AFPs
+        cursor.execute("SELECT id, nombre FROM rrhh_dim_afp ORDER BY nombre")
+        afps = cursor.fetchall()
+        
+        # Obtener estados (sin filtrar por id_tipo_estado)
+        cursor.execute("SELECT id, nombre FROM general_dim_estado ORDER BY nombre")
+        estados = cursor.fetchall()
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            'sucursales': sucursales,
+            'cargos': cargos,
+            'previsiones': previsiones,
+            'afps': afps,
+            'estados': estados
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Obtener opciones para editar colaborador
+@colaboradores_bp.route('/opciones-editar/<string:colaborador_id>', methods=['GET'])
+@jwt_required()
+def obtener_opciones_editar_colaborador(colaborador_id):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Verificar que el colaborador existe
+        cursor.execute("SELECT id FROM general_dim_colaborador WHERE id = %s", (colaborador_id,))
+        if not cursor.fetchone():
+            return jsonify({"error": "Colaborador no encontrado"}), 404
+        
+        # Obtener sucursales
+        cursor.execute("SELECT id, nombre FROM general_dim_sucursal ORDER BY nombre")
+        sucursales = cursor.fetchall()
+        
+        # Obtener cargos
+        cursor.execute("SELECT id, nombre FROM rrhh_dim_cargo ORDER BY nombre")
+        cargos = cursor.fetchall()
+        
+        # Obtener previsiones
+        cursor.execute("SELECT id, nombre FROM rrhh_dim_prevision ORDER BY nombre")
+        previsiones = cursor.fetchall()
+        
+        # Obtener AFPs
+        cursor.execute("SELECT id, nombre FROM rrhh_dim_afp ORDER BY nombre")
+        afps = cursor.fetchall()
+        
+        # Obtener estados (sin filtrar por id_tipo_estado)
+        cursor.execute("SELECT id, nombre FROM general_dim_estado ORDER BY nombre")
+        estados = cursor.fetchall()
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            'sucursales': sucursales,
+            'cargos': cargos,
+            'previsiones': previsiones,
+            'afps': afps,
+            'estados': estados
+        }), 200
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500

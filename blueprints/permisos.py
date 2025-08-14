@@ -299,11 +299,10 @@ def obtener_usuarios_con_permisos():
             SELECT 
                 u.id,
                 u.usuario,
-                u.id_colaborador,
-                CONCAT(c.nombre, ' ', c.apellido_paterno) as nombre_completo,
+                u.usuario as nombre_completo,
                 GROUP_CONCAT(p.nombre SEPARATOR ', ') as permisos
             FROM general_dim_usuario u
-            LEFT JOIN general_dim_colaborador c ON u.id_colaborador = c.id
+
             LEFT JOIN usuario_pivot_permiso_usuario ppu ON u.id = ppu.id_usuario
             LEFT JOIN usuario_dim_permiso p ON ppu.id_permiso = p.id AND p.id_estado = 1
             GROUP BY u.id

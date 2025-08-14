@@ -86,6 +86,26 @@ def crear_trabajador():
 
         id_sucursal = usuario['id_sucursalactiva']
 
+        # Validar que el contratista existe, está activo y pertenece a la sucursal del usuario
+        cursor.execute("""
+            SELECT c.id 
+            FROM general_dim_contratista c
+            INNER JOIN general_pivot_contratista_sucursal cs ON c.id = cs.id_contratista
+            WHERE c.id = %s AND c.id_estado = 1 AND cs.id_sucursal = %s
+        """, (data['id_contratista'], id_sucursal))
+        if not cursor.fetchone():
+            return jsonify({"error": "Contratista no encontrado, inactivo o no pertenece a su sucursal"}), 400
+
+        # Validar que el porcentaje existe
+        cursor.execute("SELECT id FROM general_dim_porcentajecontratista WHERE id = %s", (data['id_porcentaje'],))
+        if not cursor.fetchone():
+            return jsonify({"error": "Porcentaje no encontrado"}), 400
+
+        # Validar que el estado existe
+        cursor.execute("SELECT id FROM general_dim_estado WHERE id = %s", (data['id_estado'],))
+        if not cursor.fetchone():
+            return jsonify({"error": "Estado no encontrado"}), 400
+
         # Crear trabajador
         trabajador_id = str(uuid.uuid4())
         sql = """
@@ -191,5 +211,171 @@ def obtener_trabajador_por_id(trabajador_id):
         if not trabajador:
             return jsonify({"error": "Trabajador no encontrado"}), 404
         return jsonify(trabajador), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Obtener opciones para crear trabajador
+@trabajadores_bp.route('/opciones-crear', methods=['GET'])
+@jwt_required()
+def obtener_opciones_crear_trabajador():
+    try:
+        usuario_id = get_jwt_identity()
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Obtener sucursal activa del usuario
+        cursor.execute("SELECT id_sucursalactiva FROM general_dim_usuario WHERE id = %s", (usuario_id,))
+        usuario = cursor.fetchone()
+        if not usuario or not usuario['id_sucursalactiva']:
+            return jsonify({"error": "No se pudo obtener la sucursal activa"}), 400
+        
+        id_sucursal = usuario['id_sucursalactiva']
+        
+        # Obtener contratistas disponibles (solo de la sucursal del usuario)
+        cursor.execute("""
+            SELECT c.id, c.nombre, c.rut, c.codigo_verificador
+            FROM general_dim_contratista c
+            INNER JOIN general_pivot_contratista_sucursal cs ON c.id = cs.id_contratista
+            WHERE c.id_estado = 1 AND cs.id_sucursal = %s
+            ORDER BY c.nombre ASC
+        """, (id_sucursal,))
+        contratistas = cursor.fetchall()
+        
+        # Obtener porcentajes disponibles
+        cursor.execute("""
+            SELECT id, porcentaje
+            FROM general_dim_porcentajecontratista
+            ORDER BY porcentaje ASC
+        """)
+        porcentajes = cursor.fetchall()
+        
+        # Obtener estados disponibles
+        cursor.execute("""
+            SELECT id, nombre
+            FROM general_dim_estado
+            ORDER BY nombre ASC
+        """)
+        estados = cursor.fetchall()
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "contratistas": contratistas,
+            "porcentajes": porcentajes,
+            "estados": estados,
+            "sucursal_activa": id_sucursal
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Obtener opciones para editar trabajador
+@trabajadores_bp.route('/opciones-editar/<string:trabajador_id>', methods=['GET'])
+@jwt_required()
+def obtener_opciones_editar_trabajador(trabajador_id):
+    try:
+        usuario_id = get_jwt_identity()
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Obtener sucursal activa del usuario
+        cursor.execute("SELECT id_sucursalactiva FROM general_dim_usuario WHERE id = %s", (usuario_id,))
+        usuario = cursor.fetchone()
+        if not usuario or not usuario['id_sucursalactiva']:
+            return jsonify({"error": "No se pudo obtener la sucursal activa"}), 400
+        
+        id_sucursal = usuario['id_sucursalactiva']
+        
+        # Obtener trabajador actual
+        cursor.execute("""
+            SELECT t.*, c.nombre as nombre_contratista, p.porcentaje
+            FROM general_dim_trabajador t
+            LEFT JOIN general_dim_contratista c ON t.id_contratista = c.id
+            LEFT JOIN general_dim_porcentajecontratista p ON t.id_porcentaje = p.id
+            WHERE t.id = %s AND t.id_sucursal_activa = %s
+        """, (trabajador_id, id_sucursal))
+        
+        trabajador = cursor.fetchone()
+        if not trabajador:
+            return jsonify({"error": "Trabajador no encontrado"}), 404
+        
+        # Obtener contratistas disponibles (solo de la sucursal del usuario)
+        cursor.execute("""
+            SELECT c.id, c.nombre, c.rut, c.codigo_verificador
+            FROM general_dim_contratista c
+            INNER JOIN general_pivot_contratista_sucursal cs ON c.id = cs.id_contratista
+            WHERE c.id_estado = 1 AND cs.id_sucursal = %s
+            ORDER BY c.nombre ASC
+        """, (id_sucursal,))
+        contratistas = cursor.fetchall()
+        
+        # Obtener porcentajes disponibles
+        cursor.execute("""
+            SELECT id, porcentaje
+            FROM general_dim_porcentajecontratista
+            ORDER BY porcentaje ASC
+        """)
+        porcentajes = cursor.fetchall()
+        
+        # Obtener estados disponibles
+        cursor.execute("""
+            SELECT id, nombre
+            FROM general_dim_estado
+            ORDER BY nombre ASC
+        """)
+        estados = cursor.fetchall()
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "trabajador": trabajador,
+            "contratistas": contratistas,
+            "porcentajes": porcentajes,
+            "estados": estados,
+            "sucursal_activa": id_sucursal
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Eliminar trabajador
+@trabajadores_bp.route('/<string:trabajador_id>', methods=['DELETE'])
+@jwt_required()
+def eliminar_trabajador(trabajador_id):
+    try:
+        usuario_id = get_jwt_identity()
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Obtener sucursal activa del usuario
+        cursor.execute("SELECT id_sucursalactiva FROM general_dim_usuario WHERE id = %s", (usuario_id,))
+        usuario = cursor.fetchone()
+        if not usuario or not usuario['id_sucursalactiva']:
+            return jsonify({"error": "No se pudo obtener la sucursal activa"}), 400
+        
+        id_sucursal = usuario['id_sucursalactiva']
+        
+        # Verificar que el trabajador existe y pertenece a la sucursal del usuario
+        cursor.execute("""
+            SELECT id FROM general_dim_trabajador 
+            WHERE id = %s AND id_sucursal_activa = %s
+        """, (trabajador_id, id_sucursal))
+        
+        trabajador = cursor.fetchone()
+        if not trabajador:
+            return jsonify({"error": "Trabajador no encontrado o no tienes permisos para eliminarlo"}), 404
+        
+        # Eliminar el trabajador
+        cursor.execute("DELETE FROM general_dim_trabajador WHERE id = %s", (trabajador_id,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({"message": "Trabajador eliminado correctamente"}), 200
+        
     except Exception as e:
         return jsonify({"error": str(e)}), 500

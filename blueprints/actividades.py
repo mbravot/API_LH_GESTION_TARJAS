@@ -36,12 +36,7 @@ def obtener_actividades_por_sucursal(id_sucursal):
                 co.nombre AS contratista, 
                 tr.nombre AS tipo_rend,
                 tc.nombre AS nombre_tipoceco,
-                CASE 
-                    WHEN usr.id_colaborador IS NOT NULL THEN 
-                        CONCAT(col.nombre, ' ', col.apellido_paterno)
-                    ELSE 
-                        usr.usuario
-                END AS nombre_usuario,
+                usr.usuario AS nombre_usuario,
                 CASE 
                     WHEN a.id_tipoceco = 1 THEN (SELECT ce.nombre FROM tarja_fact_cecoadministrativo ca JOIN general_dim_ceco ce ON ca.id_ceco = ce.id WHERE ca.id_actividad = a.id LIMIT 1)
                     WHEN a.id_tipoceco = 2 THEN (SELECT ce.nombre FROM tarja_fact_cecoproductivo cp JOIN general_dim_ceco ce ON cp.id_ceco = ce.id WHERE cp.id_actividad = a.id LIMIT 1)
@@ -70,7 +65,7 @@ def obtener_actividades_por_sucursal(id_sucursal):
             LEFT JOIN tarja_dim_tiporendimiento tr ON a.id_tiporendimiento = tr.id
             LEFT JOIN general_dim_cecotipo tc ON a.id_tipoceco = tc.id
             LEFT JOIN general_dim_usuario usr ON a.id_usuario = usr.id
-            LEFT JOIN general_dim_colaborador col ON usr.id_colaborador = col.id
+
             WHERE a.id_sucursalactiva = %s
             AND (a.id_estadoactividad = 1 OR a.id_estadoactividad = 2 OR a.id_estadoactividad = 3)  -- 1: creada, 2: revisada, 3: aprobada
             GROUP BY a.id
