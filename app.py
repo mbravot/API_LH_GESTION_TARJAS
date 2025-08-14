@@ -43,6 +43,8 @@ def create_app():
     from blueprints.permisos import permisos_bp
     from blueprints.permisos_ausencia import permisos_ausencia_bp
     from blueprints.rendimientopropio import rendimientopropio_bp
+    from blueprints.vacaciones import vacaciones_bp
+    from blueprints.licencias import licencias_bp
 
     
     # Registrar blueprints
@@ -57,6 +59,8 @@ def create_app():
     app.register_blueprint(permisos_bp, url_prefix='/api/permisos')
     app.register_blueprint(permisos_ausencia_bp, url_prefix='/api/permisos-ausencia')
     app.register_blueprint(rendimientopropio_bp, url_prefix='/api/rendimientopropio')
+    app.register_blueprint(vacaciones_bp, url_prefix='/api/vacaciones')
+    app.register_blueprint(licencias_bp, url_prefix='/api/licencias')
     
     # Crear un nuevo blueprint para las rutas raíz
     root_bp = Blueprint('root_bp', __name__)

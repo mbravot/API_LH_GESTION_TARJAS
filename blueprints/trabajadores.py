@@ -29,8 +29,11 @@ def obtener_trabajadores():
 
         base_query = """
             SELECT t.id, t.rut, t.codigo_verificador, t.nombre, t.apellido_paterno, t.apellido_materno,
-                   t.id_contratista, t.id_porcentaje, t.id_estado, t.id_sucursal_activa
+                   t.id_contratista, t.id_porcentaje, t.id_estado, t.id_sucursal_activa,
+                   c.nombre as nombre_contratista, p.porcentaje
             FROM general_dim_trabajador t
+            LEFT JOIN general_dim_contratista c ON t.id_contratista = c.id
+            LEFT JOIN general_dim_porcentajecontratista p ON t.id_porcentaje = p.id
             WHERE t.id_sucursal_activa = %s
         """
         params = [id_sucursal]

@@ -20,11 +20,25 @@ def listar_colaboradores():
         if not usuario or not usuario['id_sucursalactiva']:
             return jsonify({"error": "No se encontró la sucursal activa del usuario"}), 400
         id_sucursal = usuario['id_sucursalactiva']
-        # Listar colaboradores de la sucursal
+        # Listar colaboradores de la sucursal con información relacionada
         cursor.execute("""
-            SELECT * FROM general_dim_colaborador
-            WHERE id_sucursal = %s
-            ORDER BY nombre, apellido_paterno, apellido_materno ASC
+            SELECT 
+                c.*,
+                car.nombre as nombre_cargo,
+                a.nombre as nombre_afp,
+                p.nombre as nombre_prevision,
+                s1.nombre as nombre_sucursal,
+                s2.nombre as nombre_sucursal_contrato,
+                e.nombre as nombre_estado
+            FROM general_dim_colaborador c
+            LEFT JOIN rrhh_dim_cargo car ON c.id_cargo = car.id
+            LEFT JOIN rrhh_dim_afp a ON c.id_afp = a.id
+            LEFT JOIN rrhh_dim_prevision p ON c.id_prevision = p.id
+            LEFT JOIN general_dim_sucursal s1 ON c.id_sucursal = s1.id
+            LEFT JOIN general_dim_sucursal s2 ON c.id_sucursalcontrato = s2.id
+            LEFT JOIN general_dim_estado e ON c.id_estado = e.id
+            WHERE c.id_sucursal = %s
+            ORDER BY c.nombre, c.apellido_paterno, c.apellido_materno ASC
         """, (id_sucursal,))
         colaboradores = cursor.fetchall()
         cursor.close()
@@ -140,5 +154,44 @@ def editar_colaborador(colaborador_id):
         cursor.close()
         conn.close()
         return jsonify({"message": "Colaborador actualizado correctamente"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Obtener colaborador por ID
+@colaboradores_bp.route('/<string:colaborador_id>', methods=['GET'])
+@jwt_required()
+def obtener_colaborador_por_id(colaborador_id):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        cursor.execute("""
+            SELECT 
+                c.*,
+                car.nombre as nombre_cargo,
+                a.nombre as nombre_afp,
+                p.nombre as nombre_prevision,
+                s1.nombre as nombre_sucursal,
+                s2.nombre as nombre_sucursal_contrato,
+                e.nombre as nombre_estado
+            FROM general_dim_colaborador c
+            LEFT JOIN rrhh_dim_cargo car ON c.id_cargo = car.id
+            LEFT JOIN rrhh_dim_afp a ON c.id_afp = a.id
+            LEFT JOIN rrhh_dim_prevision p ON c.id_prevision = p.id
+            LEFT JOIN general_dim_sucursal s1 ON c.id_sucursal = s1.id
+            LEFT JOIN general_dim_sucursal s2 ON c.id_sucursalcontrato = s2.id
+            LEFT JOIN general_dim_estado e ON c.id_estado = e.id
+            WHERE c.id = %s
+        """, (colaborador_id,))
+        
+        colaborador = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        if not colaborador:
+            return jsonify({"error": "Colaborador no encontrado"}), 404
+            
+        return jsonify(colaborador), 200
+        
     except Exception as e:
         return jsonify({"error": str(e)}), 500
