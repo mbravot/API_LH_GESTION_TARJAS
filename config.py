@@ -11,12 +11,12 @@ class Config:
     
     # Configuración automática para Cloud SQL
     if os.getenv('K_SERVICE'):  # Está en Cloud Run
-        DB_HOST = 'localhost'
-        DB_PORT = 3306
+        DB_HOST = os.getenv('DB_HOST', '34.42.197.11')  # IP de Cloud SQL
+        DB_PORT = int(os.getenv('DB_PORT', 3306))
     else:
         # Para desarrollo local, usar Cloud SQL Proxy
-        DB_HOST = 'localhost'
-        DB_PORT = 3306
+        DB_HOST = os.getenv('DB_HOST', 'localhost')
+        DB_PORT = int(os.getenv('DB_PORT', 3306))
     
     DB_USER = os.getenv("DB_USER", "UserApp")
     DB_PASSWORD = os.getenv("DB_PASSWORD", "&8y7c()tu9t/+,6`")

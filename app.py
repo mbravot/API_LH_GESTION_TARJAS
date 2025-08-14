@@ -3,6 +3,7 @@ from flask_jwt_extended import JWTManager
 from config import Config
 from flask_cors import CORS
 from datetime import timedelta
+import os
 
 
 # Crear la aplicación Flask
@@ -12,9 +13,18 @@ def create_app():
     # Configurar CORS
     CORS(app, resources={
         r"/*": {
-            "origins": ["http://localhost:*", "http://127.0.0.1:*", "http://192.168.1.52:*", "http://192.168.1.208:*", "http://192.168.1.60:*"],
+            "origins": [
+                "http://localhost:*", 
+                "http://127.0.0.1:*", 
+                "http://192.168.1.52:*", 
+                "http://192.168.1.208:*", 
+                "http://192.168.1.60:*",
+                "https://api-lh-gestion-tarjas-927498545444.us-central1.run.app",
+                "https://gestion-la-hornilla.web.app",
+                "https://gestion-la-hornilla.firebaseapp.com"
+            ],
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-            "allow_headers": ["Content-Type", "Authorization"],
+            "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
             "supports_credentials": True,
             "expose_headers": ["Content-Type", "Authorization"],
             "max_age": 3600
@@ -65,6 +75,34 @@ def create_app():
     # Crear un nuevo blueprint para las rutas raíz
     root_bp = Blueprint('root_bp', __name__)
     
+    # Health check para Cloud Run
+    @root_bp.route('/health', methods=['GET'])
+    def health_check():
+        return {"status": "healthy", "service": "api-lh-gestion-tarjas"}, 200
+    
+    # Debug endpoint para verificar conectividad de BD
+    @root_bp.route('/debug/db', methods=['GET'])
+    def debug_db():
+        try:
+            from utils.db import get_db_connection
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("SELECT 1 as test")
+            result = cursor.fetchone()
+            cursor.close()
+            conn.close()
+            return {
+                "status": "success",
+                "database": "connected",
+                "test_query": result
+            }, 200
+        except Exception as e:
+            return {
+                "status": "error",
+                "database": "disconnected",
+                "error": str(e)
+            }, 500
+    
     # Importar y registrar las rutas raíz
     from blueprints.auth import obtener_sucursales
     root_bp.add_url_rule('/sucursales/', 'obtener_sucursales', obtener_sucursales, methods=['GET', 'OPTIONS'])
@@ -78,5 +116,7 @@ def create_app():
 app = create_app()
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Usar puerto 8080 para Cloud Run, 5000 para desarrollo local
+    port = int(os.environ.get('PORT', 5000))
+    app.run(debug=True, host='0.0.0.0', port=port)
 
