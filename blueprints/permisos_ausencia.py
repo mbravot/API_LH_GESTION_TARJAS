@@ -19,31 +19,35 @@ def listar_permisos():
         usuario_id = get_jwt_identity()
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
+        
         # Obtener sucursal activa del usuario
         cursor.execute("SELECT id_sucursalactiva FROM general_dim_usuario WHERE id = %s", (usuario_id,))
         usuario = cursor.fetchone()
         if not usuario or not usuario['id_sucursalactiva']:
             return jsonify({"error": "No se encontró la sucursal activa del usuario"}), 400
+        
         id_sucursal = usuario['id_sucursalactiva']
-        # Listar permisos de colaboradores de la sucursal y del usuario autenticado
+        
+        # Listar permisos de colaboradores de la sucursal
         cursor.execute("""
             SELECT p.*, t.nombre AS tipo_permiso, c.nombre AS nombre_colaborador, c.apellido_paterno, c.apellido_materno, e.nombre AS estado_permiso
             FROM tarja_fact_permiso p
             JOIN tarja_dim_permisotipo t ON p.id_tipopermiso = t.id
             JOIN general_dim_colaborador c ON p.id_colaborador = c.id
             JOIN tarja_dim_permisoestado e ON p.id_estadopermiso = e.id
-            WHERE c.id_sucursal = %s AND p.id_usuario = %s
-            ORDER BY p.fecha DESC, p.timestamp DESC
-        """, (id_sucursal, usuario_id))
+            WHERE c.id_sucursal = %s
+            ORDER BY p.fecha DESC
+        """, (id_sucursal,))
+        
         permisos = cursor.fetchall()
         cursor.close()
         conn.close()
+        
         # Formatear fechas
         for permiso in permisos:
             if 'fecha' in permiso and permiso['fecha']:
                 permiso['fecha'] = format_fecha(permiso['fecha'])
-            if 'timestamp' in permiso and permiso['timestamp']:
-                permiso['timestamp'] = format_fecha(permiso['timestamp'])
+        
         return jsonify(permisos), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -55,29 +59,49 @@ def crear_permiso():
     try:
         data = request.json
         usuario_id = get_jwt_identity()
+        
+        # Validar campos requeridos
+        campos_requeridos = ['fecha', 'id_tipopermiso', 'id_colaborador', 'horas']
+        for campo in campos_requeridos:
+            if not data.get(campo):
+                return jsonify({"error": f"Campo requerido faltante: {campo}"}), 400
+        
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
+        
+        # Verificar que el colaborador existe y pertenece a la sucursal del usuario
+        cursor.execute("""
+            SELECT c.id FROM general_dim_colaborador c
+            INNER JOIN general_dim_usuario u ON c.id_sucursal = u.id_sucursalactiva
+            WHERE c.id = %s AND u.id = %s
+        """, (data['id_colaborador'], usuario_id))
+        
+        if not cursor.fetchone():
+            return jsonify({"error": "Colaborador no encontrado o no pertenece a tu sucursal"}), 404
+        
         # Generar id UUID
         permiso_id = str(uuid.uuid4())
+        
         sql = """
             INSERT INTO tarja_fact_permiso (
-                id, id_usuario, timestamp, fecha, id_tipopermiso, id_colaborador, horas, id_estadopermiso
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                id, id_usuario, fecha, id_tipopermiso, id_colaborador, horas, id_estadopermiso
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
         """
-        now = datetime.now()
+        
         cursor.execute(sql, (
             permiso_id,
             usuario_id,
-            now,
             data['fecha'],
             data['id_tipopermiso'],
             data['id_colaborador'],
             data['horas'],
-            data['id_estadopermiso']
+            data.get('id_estadopermiso', 1)  # Default a 1 si no se especifica
         ))
+        
         conn.commit()
         cursor.close()
         conn.close()
+        
         return jsonify({"message": "Permiso creado correctamente", "id": permiso_id}), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -88,13 +112,39 @@ def crear_permiso():
 def editar_permiso(permiso_id):
     try:
         data = request.json
+        usuario_id = get_jwt_identity()
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        # Verificar que el permiso existe
-        cursor.execute("SELECT * FROM tarja_fact_permiso WHERE id = %s", (permiso_id,))
+        
+        # Obtener sucursal activa del usuario
+        cursor.execute("SELECT id_sucursalactiva FROM general_dim_usuario WHERE id = %s", (usuario_id,))
+        usuario = cursor.fetchone()
+        if not usuario or not usuario['id_sucursalactiva']:
+            return jsonify({"error": "No se encontró la sucursal activa del usuario"}), 400
+        
+        id_sucursal = usuario['id_sucursalactiva']
+        
+        # Verificar que el permiso existe y pertenece a la sucursal
+        cursor.execute("""
+            SELECT p.* FROM tarja_fact_permiso p
+            JOIN general_dim_colaborador c ON p.id_colaborador = c.id
+            WHERE p.id = %s AND c.id_sucursal = %s
+        """, (permiso_id, id_sucursal))
+        
         permiso = cursor.fetchone()
         if not permiso:
             return jsonify({"error": "Permiso no encontrado"}), 404
+        
+        # Si se va a cambiar el colaborador, verificar que pertenece a la sucursal
+        if 'id_colaborador' in data and data['id_colaborador'] != permiso['id_colaborador']:
+            cursor.execute("""
+                SELECT id FROM general_dim_colaborador 
+                WHERE id = %s AND id_sucursal = %s
+            """, (data['id_colaborador'], id_sucursal))
+            
+            if not cursor.fetchone():
+                return jsonify({"error": "Colaborador no encontrado o no pertenece a tu sucursal"}), 404
+        
         # Actualizar campos editables
         sql = """
             UPDATE tarja_fact_permiso
@@ -109,9 +159,11 @@ def editar_permiso(permiso_id):
             data.get('id_estadopermiso', permiso['id_estadopermiso']),
             permiso_id
         ))
+        
         conn.commit()
         cursor.close()
         conn.close()
+        
         return jsonify({"message": "Permiso actualizado correctamente"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -121,12 +173,33 @@ def editar_permiso(permiso_id):
 @jwt_required()
 def eliminar_permiso(permiso_id):
     try:
+        usuario_id = get_jwt_identity()
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
+        
+        # Obtener sucursal activa del usuario
+        cursor.execute("SELECT id_sucursalactiva FROM general_dim_usuario WHERE id = %s", (usuario_id,))
+        usuario = cursor.fetchone()
+        if not usuario or not usuario['id_sucursalactiva']:
+            return jsonify({"error": "No se encontró la sucursal activa del usuario"}), 400
+        
+        id_sucursal = usuario['id_sucursalactiva']
+        
+        # Verificar que el permiso existe y pertenece a la sucursal
+        cursor.execute("""
+            SELECT p.id FROM tarja_fact_permiso p
+            JOIN general_dim_colaborador c ON p.id_colaborador = c.id
+            WHERE p.id = %s AND c.id_sucursal = %s
+        """, (permiso_id, id_sucursal))
+        
+        if not cursor.fetchone():
+            return jsonify({"error": "Permiso no encontrado"}), 404
+        
         cursor.execute("DELETE FROM tarja_fact_permiso WHERE id = %s", (permiso_id,))
         conn.commit()
         cursor.close()
         conn.close()
+        
         return jsonify({"message": "Permiso eliminado correctamente"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -146,30 +219,57 @@ def obtener_tipos_permiso():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# Obtener estados de permisos dia
+@permisos_ausencia_bp.route('/estados', methods=['GET'])
+@jwt_required()
+def obtener_estados_permiso():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT id, nombre FROM tarja_dim_permisoestado ORDER BY nombre ASC")
+        estados = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return jsonify(estados), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # Obtener permiso día por id
 @permisos_ausencia_bp.route('/<string:permiso_id>', methods=['GET'])
 @jwt_required()
 def obtener_permiso_por_id(permiso_id):
     try:
+        usuario_id = get_jwt_identity()
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
+        
+        # Obtener sucursal activa del usuario
+        cursor.execute("SELECT id_sucursalactiva FROM general_dim_usuario WHERE id = %s", (usuario_id,))
+        usuario = cursor.fetchone()
+        if not usuario or not usuario['id_sucursalactiva']:
+            return jsonify({"error": "No se encontró la sucursal activa del usuario"}), 400
+        
+        id_sucursal = usuario['id_sucursalactiva']
+        
         cursor.execute("""
             SELECT p.*, t.nombre AS tipo_permiso, c.nombre AS nombre_colaborador, c.apellido_paterno, c.apellido_materno, e.nombre AS estado_permiso
             FROM tarja_fact_permiso p
             JOIN tarja_dim_permisotipo t ON p.id_tipopermiso = t.id
             JOIN general_dim_colaborador c ON p.id_colaborador = c.id
             JOIN tarja_dim_permisoestado e ON p.id_estadopermiso = e.id
-            WHERE p.id = %s
-        """, (permiso_id,))
+            WHERE p.id = %s AND c.id_sucursal = %s
+        """, (permiso_id, id_sucursal))
+        
         permiso = cursor.fetchone()
         cursor.close()
         conn.close()
+        
         if not permiso:
             return jsonify({"error": "Permiso no encontrado"}), 404
+        
         if 'fecha' in permiso and permiso['fecha']:
             permiso['fecha'] = format_fecha(permiso['fecha'])
-        if 'timestamp' in permiso and permiso['timestamp']:
-            permiso['timestamp'] = format_fecha(permiso['timestamp'])
+        
         return jsonify(permiso), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500 
