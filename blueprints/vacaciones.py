@@ -9,6 +9,7 @@ vacaciones_bp = Blueprint('vacaciones_bp', __name__)
 def calcular_dias_habiles(fecha_inicio, fecha_fin, cursor):
     """
     Calcula los días hábiles entre dos fechas usando la tabla general_dim_fecha
+    SOLO cuenta días marcados como 'dia habil' (excluye fines de semana y festivos)
     """
     try:
         # Convertir fechas a formato date si vienen como datetime
@@ -19,7 +20,7 @@ def calcular_dias_habiles(fecha_inicio, fecha_fin, cursor):
         
         print(f"DEBUG - Calculando días hábiles de {fecha_inicio} a {fecha_fin}")
         
-        # Primero verificar si hay datos en el rango
+        # Verificar si hay datos en el rango
         cursor.execute("""
             SELECT COUNT(*) as total_dias
             FROM general_dim_fecha 
@@ -31,6 +32,7 @@ def calcular_dias_habiles(fecha_inicio, fecha_fin, cursor):
         
         if total_dias == 0:
             print(f"DEBUG - No hay datos en la tabla para el rango {fecha_inicio} a {fecha_fin}")
+            print(f"DEBUG - Retornando 0 días hábiles (no se puede calcular sin datos de la tabla)")
             return 0
         
         # Verificar qué categorías existen en el rango
@@ -44,7 +46,7 @@ def calcular_dias_habiles(fecha_inicio, fecha_fin, cursor):
         categorias = cursor.fetchall()
         print(f"DEBUG - Categorías encontradas: {categorias}")
         
-        # Buscar días hábiles usando la categoría 'dia habil'
+        # Buscar SOLO días hábiles usando la categoría 'dia habil'
         cursor.execute("""
             SELECT COUNT(*) as dias_habiles
             FROM general_dim_fecha 
@@ -54,25 +56,28 @@ def calcular_dias_habiles(fecha_inicio, fecha_fin, cursor):
         resultado = cursor.fetchone()
         dias_habiles = resultado['dias_habiles'] if resultado else 0
         
-        print(f"DEBUG - Días hábiles encontrados: {dias_habiles}")
+        print(f"DEBUG - Días hábiles encontrados (categoría 'dia habil'): {dias_habiles}")
         
-        # Si no encuentra con 'dia habil', probar con otras variaciones
+        # Si no encuentra con 'dia habil', probar con otras variaciones similares
         if dias_habiles == 0:
-            print(f"DEBUG - Probando otras categorías...")
+            print(f"DEBUG - Probando otras categorías similares...")
             cursor.execute("""
                 SELECT COUNT(*) as dias_habiles
                 FROM general_dim_fecha 
                 WHERE fecha BETWEEN %s AND %s 
-                AND (categoria LIKE '%habil%' OR categoria LIKE '%laboral%')
+                AND (categoria LIKE '%habil%' OR categoria LIKE '%laboral%' OR categoria LIKE '%trabajo%')
             """, (fecha_inicio, fecha_fin))
             
             resultado = cursor.fetchone()
             dias_habiles = resultado['dias_habiles'] if resultado else 0
             print(f"DEBUG - Días hábiles con LIKE: {dias_habiles}")
         
-        # Si aún no encuentra, calcular basándose en días de la semana
+        # Si no encuentra datos en la tabla, usar fallback que al menos excluye fines de semana
+        # pero con advertencia de que no excluye festivos
         if dias_habiles == 0:
-            print(f"DEBUG - Calculando días hábiles basándose en días de la semana...")
+            print(f"DEBUG - No se encontraron días hábiles en la tabla de fechas")
+            print(f"DEBUG - Usando fallback que excluye solo fines de semana (NO excluye festivos)")
+            
             from datetime import timedelta
             
             dias_habiles = 0
@@ -84,8 +89,10 @@ def calcular_dias_habiles(fecha_inicio, fecha_fin, cursor):
                     dias_habiles += 1
                 fecha_actual += timedelta(days=1)
             
-            print(f"DEBUG - Días hábiles calculados por semana: {dias_habiles}")
+            print(f"DEBUG - Días hábiles calculados por semana (fallback): {dias_habiles}")
+            print(f"DEBUG - ADVERTENCIA: Este cálculo NO excluye festivos, solo fines de semana")
         
+        print(f"DEBUG - Días hábiles finales: {dias_habiles}")
         return dias_habiles
         
     except Exception as e:
@@ -600,9 +607,9 @@ def verificar_agosto_2025():
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         
-        # Verificar datos del 11 al 22 de agosto de 2025
-        fecha_inicio = datetime.strptime('2025-08-11', '%Y-%m-%d').date()
-        fecha_fin = datetime.strptime('2025-08-22', '%Y-%m-%d').date()
+        # Verificar datos del 4 al 14 de agosto de 2025 (como en la imagen)
+        fecha_inicio = datetime.strptime('2025-08-04', '%Y-%m-%d').date()
+        fecha_fin = datetime.strptime('2025-08-14', '%Y-%m-%d').date()
         
         # Obtener todos los días en ese rango
         cursor.execute("""
@@ -623,6 +630,22 @@ def verificar_agosto_2025():
         
         dias_habiles = cursor.fetchone()['dias_habiles']
         
+        # Calcular días naturales
+        from datetime import timedelta
+        dias_naturales = 0
+        fecha_actual = fecha_inicio
+        while fecha_actual <= fecha_fin:
+            dias_naturales += 1
+            fecha_actual += timedelta(days=1)
+        
+        # Calcular días hábiles por semana (fallback)
+        dias_habiles_fallback = 0
+        fecha_actual = fecha_inicio
+        while fecha_actual <= fecha_fin:
+            if fecha_actual.weekday() < 5:  # Lunes a Viernes
+                dias_habiles_fallback += 1
+            fecha_actual += timedelta(days=1)
+        
         # Verificar si hay datos en la tabla
         cursor.execute("SELECT COUNT(*) as total FROM general_dim_fecha")
         total_registros = cursor.fetchone()['total']
@@ -638,10 +661,13 @@ def verificar_agosto_2025():
             "fecha_inicio_verificada": str(fecha_inicio),
             "fecha_fin_verificada": str(fecha_fin),
             "dias_habiles_encontrados": dias_habiles,
+            "dias_habiles_fallback": dias_habiles_fallback,
+            "dias_naturales": dias_naturales,
             "total_dias_en_rango": len(dias_rango),
             "dias_detalle": dias_rango,
             "total_registros_tabla": total_registros,
-            "rango_fechas_disponible": rango_fechas
+            "rango_fechas_disponible": rango_fechas,
+            "usando_fallback": len(dias_rango) == 0
         }), 200
         
     except Exception as e:

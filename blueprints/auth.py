@@ -60,7 +60,8 @@ def login():
         # Buscar usuario y verificar estado y acceso a la app
         sql = """
             SELECT u.*, s.nombre as sucursal_nombre,
-                   u.usuario AS nombre_usuario
+                   CONCAT(u.nombre, ' ', u.apellido_paterno, 
+                          CASE WHEN u.apellido_materno IS NOT NULL THEN CONCAT(' ', u.apellido_materno) ELSE '' END) AS nombre_completo
             FROM general_dim_usuario u
             LEFT JOIN general_dim_sucursal s ON u.id_sucursalactiva = s.id
 
@@ -98,7 +99,12 @@ def login():
         return jsonify({
             "access_token": access_token,
             "usuario": user['usuario'],
-            "nombre_usuario": user['nombre_usuario'],
+            "nombre_usuario": user['nombre_completo'],  # Nombre completo real del usuario
+            "nombre_completo": user['nombre_completo'],  # Alias para compatibilidad
+            "nombre": user['nombre'],
+            "apellido_paterno": user['apellido_paterno'],
+            "apellido_materno": user['apellido_materno'],
+            "correo": user['correo'],
             "id_sucursal": user['id_sucursalactiva'],
             "sucursal_nombre": user['sucursal_nombre'],
             "id_rol": user['id_rol'],
@@ -118,7 +124,9 @@ def refresh():
         cursor = conn.cursor(dictionary=True)
 
         sql = """
-            SELECT u.*, s.nombre as sucursal_nombre
+            SELECT u.*, s.nombre as sucursal_nombre,
+                   CONCAT(u.nombre, ' ', u.apellido_paterno, 
+                          CASE WHEN u.apellido_materno IS NOT NULL THEN CONCAT(' ', u.apellido_materno) ELSE '' END) AS nombre_completo
             FROM general_dim_usuario u
             LEFT JOIN general_dim_sucursal s ON u.id_sucursalactiva = s.id
             WHERE u.id = %s 
@@ -154,6 +162,12 @@ def refresh():
         return jsonify({
             "access_token": access_token,
             "usuario": user['usuario'],
+            "nombre_usuario": user['nombre_completo'],  # Nombre completo real del usuario
+            "nombre_completo": user['nombre_completo'],  # Alias para compatibilidad
+            "nombre": user['nombre'],
+            "apellido_paterno": user['apellido_paterno'],
+            "apellido_materno": user['apellido_materno'],
+            "correo": user['correo'],
             "id_sucursal": user['id_sucursalactiva'],
             "sucursal_nombre": user['sucursal_nombre'],
             "id_rol": user['id_rol'],
