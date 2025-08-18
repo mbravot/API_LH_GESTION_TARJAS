@@ -119,6 +119,7 @@ def editar_rendimiento_propio(id_rendimiento):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# Listar actividades de la sucursal del usuario
 @rendimientopropio_bp.route('/actividades', methods=['GET'])
 @jwt_required()
 def listar_actividades_sucursal_usuario():
