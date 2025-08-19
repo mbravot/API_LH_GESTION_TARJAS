@@ -93,6 +93,17 @@ def create_app():
     def debug_db():
         try:
             from utils.db import get_db_connection
+            import os
+            
+            # Información del entorno
+            env_info = {
+                "K_SERVICE": os.getenv('K_SERVICE'),
+                "DATABASE_URL": os.getenv('DATABASE_URL'),
+                "DB_HOST": os.getenv('DB_HOST'),
+                "DB_USER": os.getenv('DB_USER'),
+                "DB_NAME": os.getenv('DB_NAME')
+            }
+            
             conn = get_db_connection()
             cursor = conn.cursor(dictionary=True)
             cursor.execute("SELECT 1 as test")
@@ -102,18 +113,52 @@ def create_app():
             return {
                 "status": "success",
                 "database": "connected",
-                "test_query": result
+                "test_query": result,
+                "environment": env_info
             }, 200
         except Exception as e:
             return {
                 "status": "error",
                 "database": "disconnected",
-                "error": str(e)
+                "error": str(e),
+                "environment": env_info if 'env_info' in locals() else "No disponible"
             }, 500
     
     # Importar y registrar las rutas raíz
     from blueprints.auth import obtener_sucursales
     root_bp.add_url_rule('/sucursales/', 'obtener_sucursales', obtener_sucursales, methods=['GET', 'OPTIONS'])
+    
+    # Endpoint de prueba para licencias
+    @root_bp.route('/test/licencias', methods=['GET'])
+    def test_licencias():
+        try:
+            from utils.db import get_db_connection
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            
+            # Probar consulta a la tabla de licencias
+            cursor.execute("SELECT COUNT(*) as total FROM tarja_fact_licenciamedica")
+            result = cursor.fetchone()
+            
+            # Probar consulta a colaboradores
+            cursor.execute("SELECT COUNT(*) as total FROM general_dim_colaborador")
+            result2 = cursor.fetchone()
+            
+            cursor.close()
+            conn.close()
+            
+            return {
+                "status": "success",
+                "licencias_count": result['total'],
+                "colaboradores_count": result2['total'],
+                "message": "Conexión a BD y tablas funcionando correctamente"
+            }, 200
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": str(e),
+                "message": "Error al conectar con la base de datos o tablas"
+            }, 500
     
     # Registrar el blueprint raíz
     app.register_blueprint(root_bp, url_prefix="/api")
