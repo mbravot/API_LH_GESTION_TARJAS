@@ -103,15 +103,28 @@ def crear_contratista():
 def editar_contratista(contratista_id):
     try:
         data = request.json
+        usuario_id = get_jwt_identity()
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        # Obtener contratista actual
-        cursor.execute("SELECT * FROM general_dim_contratista WHERE id = %s", (contratista_id,))
-        contratista_actual = cursor.fetchone()
+        # Obtener sucursal activa del usuario
+        cursor.execute("SELECT id_sucursalactiva FROM general_dim_usuario WHERE id = %s", (usuario_id,))
+        usuario = cursor.fetchone()
+        if not usuario or not usuario['id_sucursalactiva']:
+            return jsonify({"error": "No se encontró la sucursal activa del usuario"}), 400
+        
+        id_sucursal = usuario['id_sucursalactiva']
 
+        # Verificar que el contratista existe y pertenece a la sucursal del usuario
+        cursor.execute("""
+            SELECT c.* FROM general_dim_contratista c
+            JOIN general_pivot_contratista_sucursal p ON c.id = p.id_contratista
+            WHERE c.id = %s AND p.id_sucursal = %s
+        """, (contratista_id, id_sucursal))
+        
+        contratista_actual = cursor.fetchone()
         if not contratista_actual:
-            return jsonify({"error": "Contratista no encontrado"}), 404
+            return jsonify({"error": "Contratista no encontrado o no tienes permisos para editarlo"}), 404
 
         # Validar RUT si se está modificando
         if 'rut' in data or 'codigo_verificador' in data:
@@ -152,19 +165,105 @@ def editar_contratista(contratista_id):
 @jwt_required()
 def obtener_contratista_por_id(contratista_id):
     try:
+        usuario_id = get_jwt_identity()
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
+        
+        # Obtener sucursal activa del usuario
+        cursor.execute("SELECT id_sucursalactiva FROM general_dim_usuario WHERE id = %s", (usuario_id,))
+        usuario = cursor.fetchone()
+        if not usuario or not usuario['id_sucursalactiva']:
+            return jsonify({"error": "No se encontró la sucursal activa del usuario"}), 400
+        
+        id_sucursal = usuario['id_sucursalactiva']
+        
+        # Obtener contratista específico de la sucursal del usuario
         cursor.execute("""
             SELECT c.*, p.id_sucursal
             FROM general_dim_contratista c
             JOIN general_pivot_contratista_sucursal p ON c.id = p.id_contratista
-            WHERE c.id = %s
-        """, (contratista_id,))
+            WHERE c.id = %s AND p.id_sucursal = %s
+        """, (contratista_id, id_sucursal))
         contratista = cursor.fetchone()
         cursor.close()
         conn.close()
         if not contratista:
             return jsonify({"error": "Contratista no encontrado"}), 404
         return jsonify(contratista), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Eliminar contratista
+@contratistas_bp.route('/<string:contratista_id>', methods=['DELETE'])
+@jwt_required()
+def eliminar_contratista(contratista_id):
+    try:
+        usuario_id = get_jwt_identity()
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Obtener sucursal activa del usuario
+        cursor.execute("SELECT id_sucursalactiva FROM general_dim_usuario WHERE id = %s", (usuario_id,))
+        usuario = cursor.fetchone()
+        if not usuario or not usuario['id_sucursalactiva']:
+            return jsonify({"error": "No se encontró la sucursal activa del usuario"}), 400
+        
+        id_sucursal = usuario['id_sucursalactiva']
+        
+        # Verificar que el contratista existe y pertenece a la sucursal del usuario
+        cursor.execute("""
+            SELECT c.id FROM general_dim_contratista c
+            JOIN general_pivot_contratista_sucursal p ON c.id = p.id_contratista
+            WHERE c.id = %s AND p.id_sucursal = %s
+        """, (contratista_id, id_sucursal))
+        
+        if not cursor.fetchone():
+            return jsonify({"error": "Contratista no encontrado o no tienes permisos para eliminarlo"}), 404
+        
+        # Eliminar la relación con la sucursal
+        cursor.execute("""
+            DELETE FROM general_pivot_contratista_sucursal 
+            WHERE id_contratista = %s AND id_sucursal = %s
+        """, (contratista_id, id_sucursal))
+        
+        # Verificar si el contratista tiene otras relaciones con sucursales
+        cursor.execute("""
+            SELECT COUNT(*) as count FROM general_pivot_contratista_sucursal 
+            WHERE id_contratista = %s
+        """, (contratista_id,))
+        
+        result = cursor.fetchone()
+        if result['count'] == 0:
+            # Si no tiene más relaciones, eliminar el contratista
+            cursor.execute("DELETE FROM general_dim_contratista WHERE id = %s", (contratista_id,))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({"message": "Contratista eliminado correctamente"}), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Obtener opciones para crear/editar contratistas
+@contratistas_bp.route('/opciones', methods=['GET'])
+@jwt_required()
+def obtener_opciones_contratistas():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Obtener estados
+        cursor.execute("SELECT id, nombre FROM general_dim_estado ORDER BY nombre")
+        estados = cursor.fetchall()
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            'estados': estados
+        }), 200
+        
     except Exception as e:
         return jsonify({"error": str(e)}), 500
