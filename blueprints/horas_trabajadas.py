@@ -6,7 +6,7 @@ from datetime import datetime
 
 horas_trabajadas_bp = Blueprint('horas_trabajadas_bp', __name__)
 
-# Obtener resumen de horas diarias por colaborador vs horas esperadas
+# Obtener resumen de horas diarias por colaborador desde rendimiento propio
 @horas_trabajadas_bp.route('/resumen-diario-colaborador', methods=['GET'])
 @jwt_required()
 def obtener_resumen_horas_diarias_colaborador():
@@ -29,52 +29,68 @@ def obtener_resumen_horas_diarias_colaborador():
         fecha_fin = request.args.get('fecha_fin')
         id_colaborador = request.args.get('id_colaborador')
         
-        # Construir consulta de resumen diario usando id_sucursal directamente de la vista
+        # Construir consulta para obtener actividades agrupadas por colaborador y día
         sql = """
             SELECT 
-                v.id_colaborador,
-                v.colaborador,
-                v.fecha,
-                DAYNAME(v.fecha) as nombre_dia,
-                SUM(v.horas_trabajadas) as horas_trabajadas,
+                c.id as id_colaborador,
+                CONCAT(c.nombre, ' ', c.apellido_paterno, 
+                       CASE WHEN c.apellido_materno IS NOT NULL THEN CONCAT(' ', c.apellido_materno) ELSE '' END) as colaborador,
+                a.fecha,
+                DAYNAME(a.fecha) as nombre_dia,
+                SUM(rp.horas_trabajadas) as total_horas_trabajadas,
+                SUM(rp.horas_extras) as total_horas_extras,
                 h.horas_dia as horas_esperadas,
-                (SUM(v.horas_trabajadas) - h.horas_dia) as diferencia_horas,
+                (SUM(rp.horas_trabajadas) - h.horas_dia) as diferencia_horas,
                 CASE 
-                    WHEN SUM(v.horas_trabajadas) > h.horas_dia THEN 'MÁS'
-                    WHEN SUM(v.horas_trabajadas) < h.horas_dia THEN 'MENOS'
+                    WHEN SUM(rp.horas_trabajadas) > h.horas_dia THEN 'MÁS'
+                    WHEN SUM(rp.horas_trabajadas) < h.horas_dia THEN 'MENOS'
                     ELSE 'EXACTO'
-                END as estado_trabajo
-            FROM v_tarja_tarjamovil_controlhoras v
-            LEFT JOIN tarja_dim_horaspordia h ON h.id_empresa = v.id_empresa 
+                END as estado_trabajo,
+                COUNT(DISTINCT a.id) as cantidad_actividades,
+                JSON_ARRAYAGG(
+                    JSON_OBJECT(
+                        'id_actividad', a.id,
+                        'nombre_actividad', CONCAT('Actividad ', a.id),
+                        'horas_trabajadas', rp.horas_trabajadas,
+                        'horas_extras', rp.horas_extras,
+                        'rendimiento', rp.rendimiento,
+                        'hora_inicio', a.hora_inicio,
+                        'hora_fin', a.hora_fin
+                    )
+                ) as actividades_detalle
+            FROM tarja_fact_rendimientopropio rp
+            INNER JOIN tarja_fact_actividad a ON rp.id_actividad = a.id
+            INNER JOIN general_dim_colaborador c ON rp.id_colaborador = c.id
+            INNER JOIN general_dim_sucursal s ON c.id_sucursal = s.id
+            LEFT JOIN tarja_dim_horaspordia h ON h.id_empresa = s.id_empresa 
                 AND h.nombre_dia = CASE 
-                    WHEN DAYNAME(v.fecha) = 'Monday' THEN 'Lunes'
-                    WHEN DAYNAME(v.fecha) = 'Tuesday' THEN 'Martes'
-                    WHEN DAYNAME(v.fecha) = 'Wednesday' THEN 'Miércoles'
-                    WHEN DAYNAME(v.fecha) = 'Thursday' THEN 'Jueves'
-                    WHEN DAYNAME(v.fecha) = 'Friday' THEN 'Viernes'
-                    WHEN DAYNAME(v.fecha) = 'Saturday' THEN 'Sábado'
-                    WHEN DAYNAME(v.fecha) = 'Sunday' THEN 'Domingo'
+                    WHEN DAYNAME(a.fecha) = 'Monday' THEN 'Lunes'
+                    WHEN DAYNAME(a.fecha) = 'Tuesday' THEN 'Martes'
+                    WHEN DAYNAME(a.fecha) = 'Wednesday' THEN 'Miércoles'
+                    WHEN DAYNAME(a.fecha) = 'Thursday' THEN 'Jueves'
+                    WHEN DAYNAME(a.fecha) = 'Friday' THEN 'Viernes'
+                    WHEN DAYNAME(a.fecha) = 'Saturday' THEN 'Sábado'
+                    WHEN DAYNAME(a.fecha) = 'Sunday' THEN 'Domingo'
                 END
-            WHERE v.id_sucursal = %s
-                AND v.id_usuario = %s
+            WHERE c.id_sucursal = %s
         """
-        params = [id_sucursal, usuario_id]
+        params = [id_sucursal]
         
         # Agregar filtros
         if fecha_inicio:
-            sql += " AND v.fecha >= %s"
+            sql += " AND a.fecha >= %s"
             params.append(fecha_inicio)
         
         if fecha_fin:
-            sql += " AND v.fecha <= %s"
+            sql += " AND a.fecha <= %s"
             params.append(fecha_fin)
         
         if id_colaborador:
-            sql += " AND v.id_colaborador = %s"
+            sql += " AND c.id = %s"
             params.append(id_colaborador)
         
         # Agrupar por colaborador y fecha
-        sql += " GROUP BY v.id_colaborador, v.colaborador, v.fecha, h.horas_dia ORDER BY v.fecha DESC, v.colaborador ASC"
+        sql += " GROUP BY c.id, c.nombre, c.apellido_paterno, c.apellido_materno, a.fecha, h.horas_dia ORDER BY a.fecha DESC, c.nombre ASC"
         
         cursor.execute(sql, tuple(params))
         resultados = cursor.fetchall()

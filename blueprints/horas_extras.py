@@ -6,7 +6,7 @@ from datetime import datetime
 
 horas_extras_bp = Blueprint('horas_extras_bp', __name__)
 
-# Listar rendimientos propios por sucursal del usuario
+# Listar rendimientos propios agrupados por colaborador y día
 @horas_extras_bp.route('/rendimientos', methods=['GET'])
 @jwt_required()
 def listar_rendimientos_propios():
@@ -25,26 +25,34 @@ def listar_rendimientos_propios():
         
         # Parámetros de filtrado
         id_colaborador = request.args.get('id_colaborador')
-        id_actividad = request.args.get('id_actividad')
         fecha_inicio = request.args.get('fecha_inicio')
         fecha_fin = request.args.get('fecha_fin')
         
-        # Construir query base
+        # Construir query para obtener actividades agrupadas por colaborador y día
         sql = """
             SELECT 
-                rp.id,
-                rp.id_actividad,
-                rp.id_colaborador,
-                rp.rendimiento,
-                rp.horas_trabajadas,
-                rp.horas_extras,
-                rp.id_bono,
-                CONCAT('Actividad ', a.id) as nombre_actividad,
-                a.fecha as fecha_actividad,
-                c.nombre as nombre_colaborador,
-                c.apellido_paterno,
-                c.apellido_materno,
-                b.nombre as nombre_bono
+                c.id as id_colaborador,
+                CONCAT(c.nombre, ' ', c.apellido_paterno, 
+                       CASE WHEN c.apellido_materno IS NOT NULL THEN CONCAT(' ', c.apellido_materno) ELSE '' END) as colaborador,
+                a.fecha,
+                DAYNAME(a.fecha) as nombre_dia,
+                SUM(rp.horas_trabajadas) as total_horas_trabajadas,
+                SUM(rp.horas_extras) as total_horas_extras,
+                COUNT(DISTINCT a.id) as cantidad_actividades,
+                JSON_ARRAYAGG(
+                    JSON_OBJECT(
+                        'id_rendimiento', rp.id,
+                        'id_actividad', a.id,
+                        'nombre_actividad', CONCAT('Actividad ', a.id),
+                        'horas_trabajadas', rp.horas_trabajadas,
+                        'horas_extras', rp.horas_extras,
+                        'rendimiento', rp.rendimiento,
+                        'hora_inicio', a.hora_inicio,
+                        'hora_fin', a.hora_fin,
+                        'id_bono', rp.id_bono,
+                        'nombre_bono', b.nombre
+                    )
+                ) as actividades_detalle
             FROM tarja_fact_rendimientopropio rp
             INNER JOIN tarja_fact_actividad a ON rp.id_actividad = a.id
             INNER JOIN general_dim_colaborador c ON rp.id_colaborador = c.id
@@ -54,14 +62,6 @@ def listar_rendimientos_propios():
         params = [id_sucursal]
         
         # Agregar filtros
-        if id_colaborador:
-            sql += " AND rp.id_colaborador = %s"
-            params.append(id_colaborador)
-        
-        if id_actividad:
-            sql += " AND rp.id_actividad = %s"
-            params.append(id_actividad)
-        
         if fecha_inicio:
             sql += " AND a.fecha >= %s"
             params.append(fecha_inicio)
@@ -70,7 +70,12 @@ def listar_rendimientos_propios():
             sql += " AND a.fecha <= %s"
             params.append(fecha_fin)
         
-        sql += " ORDER BY a.fecha DESC, c.nombre ASC"
+        if id_colaborador:
+            sql += " AND c.id = %s"
+            params.append(id_colaborador)
+        
+        # Agrupar por colaborador y fecha
+        sql += " GROUP BY c.id, c.nombre, c.apellido_paterno, c.apellido_materno, a.fecha ORDER BY a.fecha DESC, c.nombre ASC"
         
         cursor.execute(sql, tuple(params))
         rendimientos = cursor.fetchall()
