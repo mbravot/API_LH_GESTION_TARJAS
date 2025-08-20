@@ -22,7 +22,7 @@ def create_app():
                 "https://api-lh-gestion-tarjas-927498545444.us-central1.run.app",
                 "https://gestion-la-hornilla.web.app",
                 "https://gestion-la-hornilla.firebaseapp.com",
-                "https://gestion-tarja.lahornilla.cl/"
+                "https://gestion-tarja.lahornilla.cl"
             ],
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
