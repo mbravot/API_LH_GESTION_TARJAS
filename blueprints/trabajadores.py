@@ -30,10 +30,11 @@ def obtener_trabajadores():
         base_query = """
             SELECT t.id, t.rut, t.codigo_verificador, t.nombre, t.apellido_paterno, t.apellido_materno,
                    t.id_contratista, t.id_porcentaje, t.id_estado, t.id_sucursal_activa,
-                   c.nombre as nombre_contratista, p.porcentaje
+                   c.nombre as nombre_contratista, p.porcentaje, s.nombre as nombre_sucursal
             FROM general_dim_trabajador t
             LEFT JOIN general_dim_contratista c ON t.id_contratista = c.id
             LEFT JOIN general_dim_porcentajecontratista p ON t.id_porcentaje = p.id
+            LEFT JOIN general_dim_sucursal s ON t.id_sucursal_activa = s.id
             WHERE t.id_sucursal_activa = %s
         """
         params = [id_sucursal]
@@ -199,10 +200,11 @@ def obtener_trabajador_por_id(trabajador_id):
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         cursor.execute("""
-            SELECT t.*, c.nombre as nombre_contratista, p.porcentaje
+            SELECT t.*, c.nombre as nombre_contratista, p.porcentaje, s.nombre as nombre_sucursal
             FROM general_dim_trabajador t
             LEFT JOIN general_dim_contratista c ON t.id_contratista = c.id
             LEFT JOIN general_dim_porcentajecontratista p ON t.id_porcentaje = p.id
+            LEFT JOIN general_dim_sucursal s ON t.id_sucursal_activa = s.id
             WHERE t.id = %s
         """, (trabajador_id,))
         trabajador = cursor.fetchone()
@@ -291,10 +293,11 @@ def obtener_opciones_editar_trabajador(trabajador_id):
         
         # Obtener trabajador actual
         cursor.execute("""
-            SELECT t.*, c.nombre as nombre_contratista, p.porcentaje
+            SELECT t.*, c.nombre as nombre_contratista, p.porcentaje, s.nombre as nombre_sucursal
             FROM general_dim_trabajador t
             LEFT JOIN general_dim_contratista c ON t.id_contratista = c.id
             LEFT JOIN general_dim_porcentajecontratista p ON t.id_porcentaje = p.id
+            LEFT JOIN general_dim_sucursal s ON t.id_sucursal_activa = s.id
             WHERE t.id = %s AND t.id_sucursal_activa = %s
         """, (trabajador_id, id_sucursal))
         
