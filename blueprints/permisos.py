@@ -299,7 +299,11 @@ def obtener_usuarios_con_permisos():
             SELECT 
                 u.id,
                 u.usuario,
-                u.usuario as nombre_completo,
+                CASE 
+                    WHEN u.nombre IS NOT NULL AND u.nombre != '' 
+                    THEN TRIM(CONCAT_WS(' ', u.nombre, u.apellido_paterno, u.apellido_materno))
+                    ELSE u.usuario
+                END AS nombre_completo,
                 GROUP_CONCAT(p.nombre SEPARATOR ', ') as permisos
             FROM general_dim_usuario u
 

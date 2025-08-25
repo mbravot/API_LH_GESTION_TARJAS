@@ -31,7 +31,13 @@ def obtener_usuarios():
         cursor = conn.cursor(dictionary=True)
         cursor.execute("""
     SELECT 
-        u.id, u.usuario, u.correo, u.id_sucursalactiva, u.id_estado, u.id_rol, u.id_perfil, u.fecha_creacion, s.nombre AS nombre_sucursal
+        u.id, u.usuario, u.correo, u.id_sucursalactiva, u.id_estado, u.id_rol, u.id_perfil, u.fecha_creacion, 
+        s.nombre AS nombre_sucursal,
+        CASE 
+            WHEN u.nombre IS NOT NULL AND u.nombre != '' 
+            THEN TRIM(CONCAT_WS(' ', u.nombre, u.apellido_paterno, u.apellido_materno))
+            ELSE u.usuario
+        END AS nombre_completo
     FROM general_dim_usuario u
     LEFT JOIN general_dim_sucursal s ON u.id_sucursalactiva = s.id
 """)
