@@ -50,6 +50,7 @@ def obtener_resumen_horas_diarias_colaborador():
                 JSON_ARRAYAGG(
                     JSON_OBJECT(
                         'id_actividad', a.id,
+                        'rendimiento_id', rp.id,
                         'labor', l.nombre,
                         'ceco', CASE 
                             WHEN a.id_tipoceco = 1 THEN (SELECT ce.nombre FROM tarja_fact_cecoadministrativo ca JOIN general_dim_ceco ce ON ca.id_ceco = ce.id WHERE ca.id_actividad = a.id LIMIT 1)
@@ -146,7 +147,7 @@ def editar_horas_trabajadas(rendimiento_id):
         
         id_sucursal = usuario['id_sucursalactiva']
         
-        # Verificar que el rendimiento existe y pertenece a la sucursal del usuario
+        # Buscar el rendimiento por su ID y verificar permisos de sucursal
         cursor.execute("""
             SELECT rp.*, c.nombre as nombre_colaborador, c.apellido_paterno, c.apellido_materno,
                    a.fecha, l.nombre as labor
