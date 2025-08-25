@@ -273,3 +273,64 @@ def obtener_permiso_por_id(permiso_id):
         return jsonify(permiso), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500 
+
+# Aprobar permiso de ausencia
+@permisos_ausencia_bp.route('/<string:permiso_id>/aprobar', methods=['PUT'])
+@jwt_required()
+def aprobar_permiso(permiso_id):
+    try:
+        usuario_id = get_jwt_identity()
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Obtener sucursal activa del usuario
+        cursor.execute("SELECT id_sucursalactiva FROM general_dim_usuario WHERE id = %s", (usuario_id,))
+        usuario = cursor.fetchone()
+        if not usuario or not usuario['id_sucursalactiva']:
+            return jsonify({"error": "No se encontró la sucursal activa del usuario"}), 400
+        
+        id_sucursal = usuario['id_sucursalactiva']
+        
+        # Verificar que el permiso existe y pertenece a la sucursal
+        cursor.execute("""
+            SELECT p.*, c.nombre AS nombre_colaborador, c.apellido_paterno, c.apellido_materno, e.nombre AS estado_actual
+            FROM tarja_fact_permiso p
+            JOIN general_dim_colaborador c ON p.id_colaborador = c.id
+            JOIN tarja_dim_permisoestado e ON p.id_estadopermiso = e.id
+            WHERE p.id = %s AND c.id_sucursal = %s
+        """, (permiso_id, id_sucursal))
+        
+        permiso = cursor.fetchone()
+        if not permiso:
+            return jsonify({"error": "Permiso no encontrado"}), 404
+        
+        # Verificar que el permiso no esté ya aprobado
+        if permiso['id_estadopermiso'] == 2:  # Asumiendo que 2 es el estado "Aprobado"
+            return jsonify({"error": "El permiso ya está aprobado"}), 400
+        
+        # Actualizar el estado del permiso a aprobado (estado 2)
+        cursor.execute("""
+            UPDATE tarja_fact_permiso
+            SET id_estadopermiso = 2
+            WHERE id = %s
+        """, (permiso_id,))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        nombre_completo = f"{permiso['nombre_colaborador']} {permiso['apellido_paterno']} {permiso.get('apellido_materno', '')}".strip()
+        
+        return jsonify({
+            "message": f"Permiso de {nombre_completo} aprobado correctamente",
+            "permiso_aprobado": {
+                "id": permiso_id,
+                "colaborador": nombre_completo,
+                "fecha": format_fecha(permiso['fecha']),
+                "estado_anterior": permiso['estado_actual'],
+                "estado_nuevo": "Aprobado"
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500 
