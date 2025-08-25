@@ -50,7 +50,15 @@ def obtener_resumen_horas_diarias_colaborador():
                 JSON_ARRAYAGG(
                     JSON_OBJECT(
                         'id_actividad', a.id,
-                        'nombre_actividad', CONCAT('Actividad ', a.id),
+                        'labor', l.nombre,
+                        'ceco', CASE 
+                            WHEN a.id_tipoceco = 1 THEN (SELECT ce.nombre FROM tarja_fact_cecoadministrativo ca JOIN general_dim_ceco ce ON ca.id_ceco = ce.id WHERE ca.id_actividad = a.id LIMIT 1)
+                            WHEN a.id_tipoceco = 2 THEN (SELECT ce.nombre FROM tarja_fact_cecoproductivo cp JOIN general_dim_ceco ce ON cp.id_ceco = ce.id WHERE cp.id_actividad = a.id LIMIT 1)
+                            WHEN a.id_tipoceco = 3 THEN (SELECT ce.nombre FROM tarja_fact_cecomaquinaria cm JOIN general_dim_ceco ce ON cm.id_ceco = ce.id WHERE cm.id_actividad = a.id LIMIT 1)
+                            WHEN a.id_tipoceco = 4 THEN (SELECT ce.nombre FROM tarja_fact_cecoinversion ci JOIN general_dim_ceco ce ON ci.id_ceco = ce.id WHERE ci.id_actividad = a.id LIMIT 1)
+                            WHEN a.id_tipoceco = 5 THEN (SELECT ce.nombre FROM tarja_fact_cecoriego cr JOIN general_dim_ceco ce ON cr.id_ceco = ce.id WHERE cr.id_actividad = a.id LIMIT 1)
+                            ELSE NULL
+                        END,
                         'horas_trabajadas', rp.horas_trabajadas,
                         'horas_extras', rp.horas_extras,
                         'rendimiento', rp.rendimiento,
@@ -62,6 +70,7 @@ def obtener_resumen_horas_diarias_colaborador():
             INNER JOIN tarja_fact_actividad a ON rp.id_actividad = a.id
             INNER JOIN general_dim_colaborador c ON rp.id_colaborador = c.id
             INNER JOIN general_dim_sucursal s ON c.id_sucursal = s.id
+            LEFT JOIN general_dim_labor l ON a.id_labor = l.id
             LEFT JOIN tarja_dim_horaspordia h ON h.id_empresa = s.id_empresa 
                 AND h.nombre_dia = CASE 
                     WHEN DAYNAME(a.fecha) = 'Monday' THEN 'Lunes'
