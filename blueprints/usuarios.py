@@ -18,14 +18,10 @@ def verificar_admin(usuario_id):
     conn.close()
     return usuario and usuario['id_perfil'] == 3
 
-# 🔹 Obtener todos los usuarios (solo admin)
+# 🔹 Obtener todos los usuarios
 @usuarios_bp.route('/', methods=['GET'])
 @jwt_required()
 def obtener_usuarios():
-    usuario_id = get_jwt_identity()
-    if not verificar_admin(usuario_id):
-        return jsonify({"error": "No autorizado"}), 403
-
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
