@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from utils.db import get_db_connection
 import uuid
-from datetime import datetime
+from datetime import datetime, date
 
 horas_trabajadas_bp = Blueprint('horas_trabajadas_bp', __name__)
 
@@ -108,6 +108,85 @@ def obtener_resumen_horas_diarias_colaborador():
         conn.close()
         
         return jsonify(resultados), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Editar horas trabajadas de un colaborador
+@horas_trabajadas_bp.route('/editar/<string:rendimiento_id>', methods=['PUT'])
+@jwt_required()
+def editar_horas_trabajadas(rendimiento_id):
+    try:
+        usuario_id = get_jwt_identity()
+        data = request.json
+        
+        # Validar campos requeridos
+        if 'horas_trabajadas' not in data or 'horas_extras' not in data:
+            return jsonify({"error": "Los campos horas_trabajadas y horas_extras son requeridos"}), 400
+        
+        # Validar que las horas sean números positivos
+        try:
+            horas_trabajadas = float(data['horas_trabajadas'])
+            horas_extras = float(data['horas_extras'])
+            
+            if horas_trabajadas < 0 or horas_extras < 0:
+                return jsonify({"error": "Las horas deben ser valores positivos"}), 400
+        except (ValueError, TypeError):
+            return jsonify({"error": "Las horas deben ser números válidos"}), 400
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Obtener la sucursal activa del usuario
+        cursor.execute("SELECT id_sucursalactiva FROM general_dim_usuario WHERE id = %s", (usuario_id,))
+        usuario = cursor.fetchone()
+        
+        if not usuario or usuario['id_sucursalactiva'] is None:
+            return jsonify({"error": "No se encontró la sucursal activa del usuario"}), 400
+        
+        id_sucursal = usuario['id_sucursalactiva']
+        
+        # Verificar que el rendimiento existe y pertenece a la sucursal del usuario
+        cursor.execute("""
+            SELECT rp.*, c.nombre as nombre_colaborador, c.apellido_paterno, c.apellido_materno,
+                   a.fecha, l.nombre as labor
+            FROM tarja_fact_rendimientopropio rp
+            INNER JOIN general_dim_colaborador c ON rp.id_colaborador = c.id
+            INNER JOIN tarja_fact_actividad a ON rp.id_actividad = a.id
+            LEFT JOIN general_dim_labor l ON a.id_labor = l.id
+            WHERE rp.id = %s AND c.id_sucursal = %s
+        """, (rendimiento_id, id_sucursal))
+        
+        rendimiento = cursor.fetchone()
+        if not rendimiento:
+            return jsonify({"error": "Rendimiento no encontrado o no tienes permisos para editarlo"}), 404
+        
+        # Actualizar las horas trabajadas y extras
+        cursor.execute("""
+            UPDATE tarja_fact_rendimientopropio
+            SET horas_trabajadas = %s, horas_extras = %s
+            WHERE id = %s
+        """, (horas_trabajadas, horas_extras, rendimiento_id))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        nombre_completo = f"{rendimiento['nombre_colaborador']} {rendimiento['apellido_paterno']} {rendimiento.get('apellido_materno', '')}".strip()
+        
+        return jsonify({
+            "message": f"Horas trabajadas de {nombre_completo} actualizadas correctamente",
+            "rendimiento_actualizado": {
+                "id": rendimiento_id,
+                "colaborador": nombre_completo,
+                "fecha": rendimiento['fecha'].strftime('%Y-%m-%d') if isinstance(rendimiento['fecha'], (datetime, date)) else str(rendimiento['fecha']),
+                "labor": rendimiento['labor'],
+                "horas_trabajadas_anterior": rendimiento['horas_trabajadas'],
+                "horas_extras_anterior": rendimiento['horas_extras'],
+                "horas_trabajadas_nuevo": horas_trabajadas,
+                "horas_extras_nuevo": horas_extras
+            }
+        }), 200
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500
