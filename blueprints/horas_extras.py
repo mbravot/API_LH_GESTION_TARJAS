@@ -43,7 +43,15 @@ def listar_rendimientos_propios():
                     JSON_OBJECT(
                         'id_rendimiento', rp.id,
                         'id_actividad', a.id,
-                        'nombre_actividad', CONCAT('Actividad ', a.id),
+                        'labor', l.nombre,
+                        'ceco', CASE 
+                            WHEN a.id_tipoceco = 1 THEN (SELECT ce.nombre FROM tarja_fact_cecoadministrativo ca JOIN general_dim_ceco ce ON ca.id_ceco = ce.id WHERE ca.id_actividad = a.id LIMIT 1)
+                            WHEN a.id_tipoceco = 2 THEN (SELECT ce.nombre FROM tarja_fact_cecoproductivo cp JOIN general_dim_ceco ce ON cp.id_ceco = ce.id WHERE cp.id_actividad = a.id LIMIT 1)
+                            WHEN a.id_tipoceco = 3 THEN (SELECT ce.nombre FROM tarja_fact_cecomaquinaria cm JOIN general_dim_ceco ce ON cm.id_ceco = ce.id WHERE cm.id_actividad = a.id LIMIT 1)
+                            WHEN a.id_tipoceco = 4 THEN (SELECT ce.nombre FROM tarja_fact_cecoinversion ci JOIN general_dim_ceco ce ON ci.id_ceco = ce.id WHERE ci.id_actividad = a.id LIMIT 1)
+                            WHEN a.id_tipoceco = 5 THEN (SELECT ce.nombre FROM tarja_fact_cecoriego cr JOIN general_dim_ceco ce ON cr.id_ceco = ce.id WHERE cr.id_actividad = a.id LIMIT 1)
+                            ELSE NULL
+                        END,
                         'horas_trabajadas', rp.horas_trabajadas,
                         'horas_extras', rp.horas_extras,
                         'rendimiento', rp.rendimiento,
@@ -56,6 +64,7 @@ def listar_rendimientos_propios():
             FROM tarja_fact_rendimientopropio rp
             INNER JOIN tarja_fact_actividad a ON rp.id_actividad = a.id
             INNER JOIN general_dim_colaborador c ON rp.id_colaborador = c.id
+            LEFT JOIN general_dim_labor l ON a.id_labor = l.id
             LEFT JOIN general_dim_bono b ON rp.id_bono = b.id
             WHERE c.id_sucursal = %s
         """
@@ -115,7 +124,15 @@ def obtener_rendimiento_propio(rendimiento_id):
                 rp.horas_trabajadas,
                 rp.horas_extras,
                 rp.id_bono,
-                CONCAT('Actividad ', a.id) as nombre_actividad,
+                l.nombre as labor,
+                CASE 
+                    WHEN a.id_tipoceco = 1 THEN (SELECT ce.nombre FROM tarja_fact_cecoadministrativo ca JOIN general_dim_ceco ce ON ca.id_ceco = ce.id WHERE ca.id_actividad = a.id LIMIT 1)
+                    WHEN a.id_tipoceco = 2 THEN (SELECT ce.nombre FROM tarja_fact_cecoproductivo cp JOIN general_dim_ceco ce ON cp.id_ceco = ce.id WHERE cp.id_actividad = a.id LIMIT 1)
+                    WHEN a.id_tipoceco = 3 THEN (SELECT ce.nombre FROM tarja_fact_cecomaquinaria cm JOIN general_dim_ceco ce ON cm.id_ceco = ce.id WHERE cm.id_actividad = a.id LIMIT 1)
+                    WHEN a.id_tipoceco = 4 THEN (SELECT ce.nombre FROM tarja_fact_cecoinversion ci JOIN general_dim_ceco ce ON ci.id_ceco = ce.id WHERE ci.id_actividad = a.id LIMIT 1)
+                    WHEN a.id_tipoceco = 5 THEN (SELECT ce.nombre FROM tarja_fact_cecoriego cr JOIN general_dim_ceco ce ON cr.id_ceco = ce.id WHERE cr.id_actividad = a.id LIMIT 1)
+                    ELSE NULL
+                END as ceco,
                 a.fecha as fecha_actividad,
                 c.nombre as nombre_colaborador,
                 c.apellido_paterno,
@@ -124,6 +141,7 @@ def obtener_rendimiento_propio(rendimiento_id):
             FROM tarja_fact_rendimientopropio rp
             INNER JOIN tarja_fact_actividad a ON rp.id_actividad = a.id
             INNER JOIN general_dim_colaborador c ON rp.id_colaborador = c.id
+            LEFT JOIN general_dim_labor l ON a.id_labor = l.id
             LEFT JOIN general_dim_bono b ON rp.id_bono = b.id
             WHERE rp.id = %s AND c.id_sucursal = %s
         """, (rendimiento_id, id_sucursal))
@@ -223,14 +241,22 @@ def obtener_actividades_colaborador(id_colaborador):
         cursor.execute("""
             SELECT 
                 a.id,
-                CONCAT('Actividad ', a.id) as nombre,
+                l.nombre as labor,
                 a.fecha,
-                CONCAT('Actividad ', a.id) as descripcion,
+                CASE 
+                    WHEN a.id_tipoceco = 1 THEN (SELECT ce.nombre FROM tarja_fact_cecoadministrativo ca JOIN general_dim_ceco ce ON ca.id_ceco = ce.id WHERE ca.id_actividad = a.id LIMIT 1)
+                    WHEN a.id_tipoceco = 2 THEN (SELECT ce.nombre FROM tarja_fact_cecoproductivo cp JOIN general_dim_ceco ce ON cp.id_ceco = ce.id WHERE cp.id_actividad = a.id LIMIT 1)
+                    WHEN a.id_tipoceco = 3 THEN (SELECT ce.nombre FROM tarja_fact_cecomaquinaria cm JOIN general_dim_ceco ce ON cm.id_ceco = ce.id WHERE cm.id_actividad = a.id LIMIT 1)
+                    WHEN a.id_tipoceco = 4 THEN (SELECT ce.nombre FROM tarja_fact_cecoinversion ci JOIN general_dim_ceco ce ON ci.id_ceco = ce.id WHERE ci.id_actividad = a.id LIMIT 1)
+                    WHEN a.id_tipoceco = 5 THEN (SELECT ce.nombre FROM tarja_fact_cecoriego cr JOIN general_dim_ceco ce ON cr.id_ceco = ce.id WHERE cr.id_actividad = a.id LIMIT 1)
+                    ELSE NULL
+                END as ceco,
                 rp.id as rendimiento_id,
                 rp.rendimiento,
                 rp.horas_trabajadas,
                 rp.horas_extras
             FROM tarja_fact_actividad a
+            LEFT JOIN general_dim_labor l ON a.id_labor = l.id
             LEFT JOIN tarja_fact_rendimientopropio rp ON a.id = rp.id_actividad AND rp.id_colaborador = %s
             WHERE a.id_usuario = %s
             ORDER BY a.fecha DESC
