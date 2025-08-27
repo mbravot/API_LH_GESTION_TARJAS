@@ -318,9 +318,9 @@ def obtener_rendimientos_individuales_contratistas():
             return jsonify({"error": "No se encontró la sucursal activa del usuario"}), 400
 
         id_sucursal = usuario['id_sucursalactiva']
+        id_actividad = request.args.get('id_actividad')
 
-        # Obtener rendimientos individuales de contratistas
-        cursor.execute("""
+        sql = """
             SELECT 
                 r.id,
                 r.id_actividad,
@@ -336,8 +336,15 @@ def obtener_rendimientos_individuales_contratistas():
             JOIN general_dim_trabajador t ON r.id_trabajador = t.id
             JOIN general_dim_porcentajecontratista p ON r.id_porcentaje_individual = p.id
             WHERE a.id_sucursalactiva = %s
-            ORDER BY l.nombre ASC
-        """, (id_sucursal,))
+        """
+        params = [id_sucursal]
+        
+        if id_actividad:
+            sql += " AND r.id_actividad = %s"
+            params.append(id_actividad)
+            
+        sql += " ORDER BY l.nombre ASC"
+        cursor.execute(sql, tuple(params))
         rendimientos = cursor.fetchall()
 
         cursor.close()
