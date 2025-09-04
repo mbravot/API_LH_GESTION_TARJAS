@@ -70,7 +70,7 @@ def obtener_actividades_por_sucursal(id_sucursal):
             WHERE a.id_sucursalactiva = %s
             AND (a.id_estadoactividad = 1 OR a.id_estadoactividad = 2 OR a.id_estadoactividad = 3)  -- 1: creada, 2: revisada, 3: aprobada
             GROUP BY a.id
-            ORDER BY a.fecha DESC
+            ORDER BY l.nombre ASC
         """
 
         cursor.execute(sql, (id_sucursal,))
