@@ -329,6 +329,8 @@ def obtener_rendimientos_individuales_contratistas():
                 r.id_porcentaje_individual,
                 l.nombre as nombre_actividad,
                 t.nombre as nombre_trabajador,
+                t.apellido_paterno,
+                t.apellido_materno,
                 p.porcentaje
             FROM tarja_fact_rendimientocontratista r
             JOIN tarja_fact_actividad a ON r.id_actividad = a.id
