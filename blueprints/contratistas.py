@@ -25,14 +25,19 @@ def obtener_contratistas():
                 return jsonify({"error": "No se encontró la sucursal activa del usuario"}), 400
             id_sucursal = usuario['id_sucursalactiva']
 
-        # Obtener contratistas de la sucursal
+        # Obtener contratistas de la sucursal con cantidad de trabajadores activos
         cursor.execute("""
-            SELECT c.* 
+            SELECT c.*, 
+                   COALESCE(COUNT(t.id), 0) as cantidad_trabajadores_activos
             FROM general_dim_contratista c
             JOIN general_pivot_contratista_sucursal p ON c.id = p.id_contratista
+            LEFT JOIN general_dim_trabajador t ON c.id = t.id_contratista 
+                AND t.id_sucursal_activa = %s 
+                AND t.id_estado = 1  -- 1: activo
             WHERE p.id_sucursal = %s
+            GROUP BY c.id, c.rut, c.codigo_verificador, c.nombre, c.id_estado
             ORDER BY c.nombre ASC
-        """, (id_sucursal,))
+        """, (id_sucursal, id_sucursal))
         
         contratistas = cursor.fetchall()
         cursor.close()
