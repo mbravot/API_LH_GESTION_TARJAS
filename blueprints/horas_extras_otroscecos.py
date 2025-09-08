@@ -427,6 +427,7 @@ def obtener_cecos_por_tipo(id_tipo_ceco):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
 @horas_extras_otroscecos_bp.route('/opciones', methods=['GET'])
 @jwt_required()
 def obtener_opciones_horas_extras_otroscecos():
