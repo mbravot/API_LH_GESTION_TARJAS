@@ -209,10 +209,35 @@ def crear_horas_extras_otroscecos():
         ))
         
         conn.commit()
+        
+        # Obtener los datos completos del registro creado
+        cursor.execute("""
+            SELECT 
+                he.id,
+                he.id_colaborador,
+                he.fecha,
+                he.id_cecotipo,
+                he.id_ceco,
+                he.cantidad,
+                CONCAT(c.nombre, ' ', c.apellido_paterno, 
+                       CASE WHEN c.apellido_materno IS NOT NULL THEN CONCAT(' ', c.apellido_materno) ELSE '' END) as nombre_colaborador,
+                ct.nombre as nombre_cecotipo,
+                ce.nombre as nombre_ceco
+            FROM tarja_fact_he_otroceco he
+            INNER JOIN general_dim_colaborador c ON he.id_colaborador = c.id
+            INNER JOIN general_dim_cecotipo ct ON he.id_cecotipo = ct.id
+            INNER JOIN general_dim_ceco ce ON he.id_ceco = ce.id
+            WHERE he.id = %s
+        """, (he_id,))
+        
+        registro_creado = cursor.fetchone()
         cursor.close()
         conn.close()
         
-        return jsonify({"message": "Horas extras creadas correctamente", "id": he_id}), 201
+        return jsonify({
+            "message": "Horas extras creadas correctamente", 
+            "registro": registro_creado
+        }), 201
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500
