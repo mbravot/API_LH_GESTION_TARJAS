@@ -347,6 +347,61 @@ def eliminar_horas_extras_otroscecos(he_id):
         return jsonify({"error": str(e)}), 500
 
 # Obtener opciones para crear/editar (tipos de CECO y CECOs)
+# Obtener tipos de CECO
+@horas_extras_otroscecos_bp.route('/tipos-ceco', methods=['GET'])
+@jwt_required()
+def obtener_tipos_ceco():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Obtener tipos de CECO
+        cursor.execute("SELECT id, nombre FROM general_dim_cecotipo ORDER BY nombre")
+        tipos_ceco = cursor.fetchall()
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify(tipos_ceco), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Obtener CECOs por tipo
+@horas_extras_otroscecos_bp.route('/cecos-por-tipo/<int:id_tipo_ceco>', methods=['GET'])
+@jwt_required()
+def obtener_cecos_por_tipo(id_tipo_ceco):
+    try:
+        usuario_id = get_jwt_identity()
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Obtener la sucursal activa del usuario
+        cursor.execute("SELECT id_sucursalactiva FROM general_dim_usuario WHERE id = %s", (usuario_id,))
+        usuario = cursor.fetchone()
+        
+        if not usuario or usuario['id_sucursalactiva'] is None:
+            return jsonify({"error": "No se encontró la sucursal activa del usuario"}), 400
+        
+        id_sucursal = usuario['id_sucursalactiva']
+        
+        # Obtener CECOs del tipo seleccionado y de la sucursal del usuario
+        cursor.execute("""
+            SELECT id, nombre 
+            FROM general_dim_ceco 
+            WHERE id_cecotipo = %s AND id_sucursal = %s AND id_estado = 1
+            ORDER BY nombre
+        """, (id_tipo_ceco, id_sucursal))
+        cecos = cursor.fetchall()
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify(cecos), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @horas_extras_otroscecos_bp.route('/opciones', methods=['GET'])
 @jwt_required()
 def obtener_opciones_horas_extras_otroscecos():
