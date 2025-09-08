@@ -60,6 +60,14 @@ def obtener_resumen_horas_diarias_colaborador():
                             WHEN a.id_tipoceco = 5 THEN (SELECT ce.nombre FROM tarja_fact_cecoriego cr JOIN general_dim_ceco ce ON cr.id_ceco = ce.id WHERE cr.id_actividad = a.id LIMIT 1)
                             ELSE NULL
                         END,
+                        'nombre_ceco', CASE 
+                            WHEN a.id_tipoceco = 1 THEN (SELECT ce.descripcion FROM tarja_fact_cecoadministrativo ca JOIN general_dim_ceco ce ON ca.id_ceco = ce.id WHERE ca.id_actividad = a.id LIMIT 1)
+                            WHEN a.id_tipoceco = 2 THEN (SELECT ce.descripcion FROM tarja_fact_cecoproductivo cp JOIN general_dim_ceco ce ON cp.id_ceco = ce.id WHERE cp.id_actividad = a.id LIMIT 1)
+                            WHEN a.id_tipoceco = 3 THEN (SELECT ce.descripcion FROM tarja_fact_cecomaquinaria cm JOIN general_dim_ceco ce ON cm.id_ceco = ce.id WHERE cm.id_actividad = a.id LIMIT 1)
+                            WHEN a.id_tipoceco = 4 THEN (SELECT ce.descripcion FROM tarja_fact_cecoinversion ci JOIN general_dim_ceco ce ON ci.id_ceco = ce.id WHERE ci.id_actividad = a.id LIMIT 1)
+                            WHEN a.id_tipoceco = 5 THEN (SELECT ce.descripcion FROM tarja_fact_cecoriego cr JOIN general_dim_ceco ce ON cr.id_ceco = ce.id WHERE cr.id_actividad = a.id LIMIT 1)
+                            ELSE NULL
+                        END,
                         'horas_trabajadas', rp.horas_trabajadas,
                         'horas_extras', rp.horas_extras,
                         'rendimiento', rp.rendimiento,
