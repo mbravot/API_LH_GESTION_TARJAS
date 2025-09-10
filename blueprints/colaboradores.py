@@ -31,6 +31,7 @@ def listar_colaboradores():
                 e.nombre as nombre_estado,
                 sb.sueldobase,
                 sb.base_dia,
+                sb.hora_dia,
                 sb.fecha as fecha_sueldobase
             FROM general_dim_colaborador c
             LEFT JOIN rrhh_dim_cargo car ON c.id_cargo = car.id
@@ -275,6 +276,7 @@ def obtener_colaborador_por_id(colaborador_id):
                 e.nombre as nombre_estado,
                 sb.sueldobase,
                 sb.base_dia,
+                sb.hora_dia,
                 sb.fecha as fecha_sueldobase
             FROM general_dim_colaborador c
             LEFT JOIN rrhh_dim_cargo car ON c.id_cargo = car.id
