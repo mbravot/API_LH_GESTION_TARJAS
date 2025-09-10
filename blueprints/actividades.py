@@ -185,13 +185,13 @@ def cambiar_estado_actividad(actividad_id):
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Solo actualizar el estado
+        # Solo actualizar el estado - permitir editar actividades de cualquier usuario
         sql = """
             UPDATE tarja_fact_actividad 
             SET id_estadoactividad = %s
-            WHERE id = %s AND id_usuario = %s
+            WHERE id = %s
         """
-        valores = (nuevo_estado, actividad_id, usuario_id)
+        valores = (nuevo_estado, actividad_id)
 
         cursor.execute(sql, valores)
         conn.commit()
@@ -199,7 +199,7 @@ def cambiar_estado_actividad(actividad_id):
         if cursor.rowcount == 0:
             cursor.close()
             conn.close()
-            return jsonify({"error": "Actividad no encontrada o no tienes permiso para editarla"}), 404
+            return jsonify({"error": "Actividad no encontrada"}), 404
 
         cursor.close()
         conn.close()
