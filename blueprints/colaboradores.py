@@ -28,13 +28,17 @@ def listar_colaboradores():
                 a.nombre as nombre_afp,
                 p.nombre as nombre_prevision,
                 s1.nombre as nombre_sucursal,
-                e.nombre as nombre_estado
+                e.nombre as nombre_estado,
+                sb.sueldobase,
+                sb.base_dia,
+                sb.fecha as fecha_sueldobase
             FROM general_dim_colaborador c
             LEFT JOIN rrhh_dim_cargo car ON c.id_cargo = car.id
             LEFT JOIN rrhh_dim_afp a ON c.id_afp = a.id
             LEFT JOIN rrhh_dim_prevision p ON c.id_prevision = p.id
             LEFT JOIN general_dim_sucursal s1 ON c.id_sucursal = s1.id
             LEFT JOIN general_dim_estado e ON c.id_estado = e.id
+            LEFT JOIN rrhh_fact_sueldobase sb ON c.id_sueldobaseactivo = sb.id
             WHERE c.id_sucursal = %s
             ORDER BY c.nombre, c.apellido_paterno, c.apellido_materno ASC
         """, (id_sucursal,))
@@ -105,13 +109,20 @@ def crear_colaborador():
         if not cursor.fetchone():
             return jsonify({"error": "Estado no válido"}), 400
         
+        # Validar sueldo base activo si se proporciona
+        id_sueldobaseactivo = data.get('id_sueldobaseactivo')
+        if id_sueldobaseactivo:
+            cursor.execute("SELECT id FROM rrhh_fact_sueldobase WHERE id = %s", (id_sueldobaseactivo,))
+            if not cursor.fetchone():
+                return jsonify({"error": "Sueldo base no válido"}), 400
+        
         colaborador_id = str(uuid.uuid4())
         sql = """
             INSERT INTO general_dim_colaborador (
                 id, nombre, apellido_paterno, apellido_materno, rut, codigo_verificador,
                 id_sucursal, id_cargo, fecha_nacimiento, fecha_incorporacion,
-                id_prevision, id_afp, id_estado, fecha_finiquito
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                id_prevision, id_afp, id_estado, fecha_finiquito, id_sueldobaseactivo
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         cursor.execute(sql, (
             colaborador_id,
@@ -127,7 +138,8 @@ def crear_colaborador():
             id_prevision,
             id_afp,
             id_estado,
-            data.get('fecha_finiquito')
+            data.get('fecha_finiquito'),
+            id_sueldobaseactivo
         ))
         conn.commit()
         cursor.close()
@@ -175,6 +187,7 @@ def editar_colaborador(colaborador_id):
         id_afp = data.get('id_afp', colaborador_actual['id_afp'])
         id_estado = data.get('id_estado', colaborador_actual['id_estado'])
         fecha_finiquito = data.get('fecha_finiquito', colaborador_actual['fecha_finiquito'])
+        id_sueldobaseactivo = data.get('id_sueldobaseactivo', colaborador_actual['id_sueldobaseactivo'])
         
         # Validar cargo si se está modificando
         if id_cargo and id_cargo != colaborador_actual['id_cargo']:
@@ -200,12 +213,18 @@ def editar_colaborador(colaborador_id):
             if not cursor.fetchone():
                 return jsonify({"error": "Estado no válido"}), 400
         
+        # Validar sueldo base activo si se está modificando
+        if id_sueldobaseactivo and id_sueldobaseactivo != colaborador_actual['id_sueldobaseactivo']:
+            cursor.execute("SELECT id FROM rrhh_fact_sueldobase WHERE id = %s", (id_sueldobaseactivo,))
+            if not cursor.fetchone():
+                return jsonify({"error": "Sueldo base no válido"}), 400
+        
         # Actualizar colaborador
         sql = """
             UPDATE general_dim_colaborador
             SET nombre = %s, apellido_paterno = %s, apellido_materno = %s, rut = %s, codigo_verificador = %s,
                 id_cargo = %s, fecha_nacimiento = %s, fecha_incorporacion = %s,
-                id_prevision = %s, id_afp = %s, id_estado = %s, fecha_finiquito = %s
+                id_prevision = %s, id_afp = %s, id_estado = %s, fecha_finiquito = %s, id_sueldobaseactivo = %s
             WHERE id = %s
         """
         cursor.execute(sql, (
@@ -221,6 +240,7 @@ def editar_colaborador(colaborador_id):
             id_afp,
             id_estado,
             fecha_finiquito,
+            id_sueldobaseactivo,
             colaborador_id
         ))
         conn.commit()
@@ -252,13 +272,17 @@ def obtener_colaborador_por_id(colaborador_id):
                 a.nombre as nombre_afp,
                 p.nombre as nombre_prevision,
                 s1.nombre as nombre_sucursal,
-                e.nombre as nombre_estado
+                e.nombre as nombre_estado,
+                sb.sueldobase,
+                sb.base_dia,
+                sb.fecha as fecha_sueldobase
             FROM general_dim_colaborador c
             LEFT JOIN rrhh_dim_cargo car ON c.id_cargo = car.id
             LEFT JOIN rrhh_dim_afp a ON c.id_afp = a.id
             LEFT JOIN rrhh_dim_prevision p ON c.id_prevision = p.id
             LEFT JOIN general_dim_sucursal s1 ON c.id_sucursal = s1.id
             LEFT JOIN general_dim_estado e ON c.id_estado = e.id
+            LEFT JOIN rrhh_fact_sueldobase sb ON c.id_sueldobaseactivo = sb.id
             WHERE c.id = %s AND c.id_sucursal = %s
         """, (colaborador_id, usuario['id_sucursalactiva']))
         
@@ -404,6 +428,244 @@ def eliminar_colaborador(colaborador_id):
             "colaborador_eliminado": {
                 "id": colaborador_id,
                 "nombre_completo": nombre_completo
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ==================== ENDPOINTS PARA GESTIONAR SUELDOS BASE ====================
+
+# Listar sueldos base de un colaborador
+@colaboradores_bp.route('/<string:colaborador_id>/sueldos-base', methods=['GET'])
+@jwt_required()
+def listar_sueldos_base_colaborador(colaborador_id):
+    try:
+        usuario_id = get_jwt_identity()
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Obtener sucursal activa del usuario
+        cursor.execute("SELECT id_sucursalactiva FROM general_dim_usuario WHERE id = %s", (usuario_id,))
+        usuario = cursor.fetchone()
+        if not usuario or not usuario['id_sucursalactiva']:
+            return jsonify({"error": "No se encontró la sucursal activa del usuario"}), 400
+        
+        # Verificar que el colaborador existe y pertenece a la sucursal del usuario
+        cursor.execute("""
+            SELECT id FROM general_dim_colaborador 
+            WHERE id = %s AND id_sucursal = %s
+        """, (colaborador_id, usuario['id_sucursalactiva']))
+        if not cursor.fetchone():
+            return jsonify({"error": "Colaborador no encontrado"}), 404
+        
+        # Listar sueldos base del colaborador ordenados por fecha descendente
+        cursor.execute("""
+            SELECT 
+                sb.*,
+                c.nombre, c.apellido_paterno, c.apellido_materno
+            FROM rrhh_fact_sueldobase sb
+            JOIN general_dim_colaborador c ON sb.id_colaborador = c.id
+            WHERE sb.id_colaborador = %s
+            ORDER BY sb.fecha DESC, sb.id DESC
+        """, (colaborador_id,))
+        
+        sueldos_base = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        return jsonify(sueldos_base), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Crear nuevo sueldo base para un colaborador
+@colaboradores_bp.route('/<string:colaborador_id>/sueldos-base', methods=['POST'])
+@jwt_required()
+def crear_sueldo_base_colaborador(colaborador_id):
+    try:
+        data = request.json
+        usuario_id = get_jwt_identity()
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Obtener sucursal activa del usuario
+        cursor.execute("SELECT id_sucursalactiva FROM general_dim_usuario WHERE id = %s", (usuario_id,))
+        usuario = cursor.fetchone()
+        if not usuario or not usuario['id_sucursalactiva']:
+            return jsonify({"error": "No se encontró la sucursal activa del usuario"}), 400
+        
+        # Verificar que el colaborador existe y pertenece a la sucursal del usuario
+        cursor.execute("""
+            SELECT id FROM general_dim_colaborador 
+            WHERE id = %s AND id_sucursal = %s
+        """, (colaborador_id, usuario['id_sucursalactiva']))
+        if not cursor.fetchone():
+            return jsonify({"error": "Colaborador no encontrado"}), 404
+        
+        # Validar campos requeridos
+        if not data.get('sueldobase') or not data.get('fecha'):
+            return jsonify({"error": "Los campos sueldobase y fecha son requeridos"}), 400
+        
+        sueldobase = data.get('sueldobase')
+        fecha = data.get('fecha')
+        
+        # Validar que sueldobase sea un número positivo
+        try:
+            sueldobase = int(sueldobase)
+            if sueldobase <= 0:
+                return jsonify({"error": "El sueldo base debe ser un número positivo"}), 400
+        except (ValueError, TypeError):
+            return jsonify({"error": "El sueldo base debe ser un número válido"}), 400
+        
+        # Insertar nuevo sueldo base
+        sql = """
+            INSERT INTO rrhh_fact_sueldobase (sueldobase, id_colaborador, fecha)
+            VALUES (%s, %s, %s)
+        """
+        cursor.execute(sql, (sueldobase, colaborador_id, fecha))
+        conn.commit()
+        
+        # Obtener el ID del sueldo base creado
+        sueldo_base_id = cursor.lastrowid
+        
+        # Obtener los datos completos del sueldo base creado
+        cursor.execute("""
+            SELECT 
+                sb.*,
+                c.nombre, c.apellido_paterno, c.apellido_materno
+            FROM rrhh_fact_sueldobase sb
+            JOIN general_dim_colaborador c ON sb.id_colaborador = c.id
+            WHERE sb.id = %s
+        """, (sueldo_base_id,))
+        
+        sueldo_base_creado = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "message": "Sueldo base creado correctamente",
+            "sueldo_base": sueldo_base_creado
+        }), 201
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Editar sueldo base
+@colaboradores_bp.route('/sueldos-base/<int:sueldo_base_id>', methods=['PUT'])
+@jwt_required()
+def editar_sueldo_base(sueldo_base_id):
+    try:
+        data = request.json
+        usuario_id = get_jwt_identity()
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Obtener sucursal activa del usuario
+        cursor.execute("SELECT id_sucursalactiva FROM general_dim_usuario WHERE id = %s", (usuario_id,))
+        usuario = cursor.fetchone()
+        if not usuario or not usuario['id_sucursalactiva']:
+            return jsonify({"error": "No se encontró la sucursal activa del usuario"}), 400
+        
+        # Verificar que el sueldo base existe y el colaborador pertenece a la sucursal del usuario
+        cursor.execute("""
+            SELECT sb.*, c.id_sucursal
+            FROM rrhh_fact_sueldobase sb
+            JOIN general_dim_colaborador c ON sb.id_colaborador = c.id
+            WHERE sb.id = %s AND c.id_sucursal = %s
+        """, (sueldo_base_id, usuario['id_sucursalactiva']))
+        
+        sueldo_base_actual = cursor.fetchone()
+        if not sueldo_base_actual:
+            return jsonify({"error": "Sueldo base no encontrado"}), 404
+        
+        # Validar campos si se proporcionan
+        sueldobase = data.get('sueldobase', sueldo_base_actual['sueldobase'])
+        fecha = data.get('fecha', sueldo_base_actual['fecha'])
+        
+        # Validar que sueldobase sea un número positivo si se está modificando
+        if 'sueldobase' in data:
+            try:
+                sueldobase = int(sueldobase)
+                if sueldobase <= 0:
+                    return jsonify({"error": "El sueldo base debe ser un número positivo"}), 400
+            except (ValueError, TypeError):
+                return jsonify({"error": "El sueldo base debe ser un número válido"}), 400
+        
+        # Actualizar sueldo base
+        sql = """
+            UPDATE rrhh_fact_sueldobase
+            SET sueldobase = %s, fecha = %s
+            WHERE id = %s
+        """
+        cursor.execute(sql, (sueldobase, fecha, sueldo_base_id))
+        conn.commit()
+        
+        # Obtener los datos actualizados del sueldo base
+        cursor.execute("""
+            SELECT 
+                sb.*,
+                c.nombre, c.apellido_paterno, c.apellido_materno
+            FROM rrhh_fact_sueldobase sb
+            JOIN general_dim_colaborador c ON sb.id_colaborador = c.id
+            WHERE sb.id = %s
+        """, (sueldo_base_id,))
+        
+        sueldo_base_actualizado = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "message": "Sueldo base actualizado correctamente",
+            "sueldo_base": sueldo_base_actualizado
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Eliminar sueldo base
+@colaboradores_bp.route('/sueldos-base/<int:sueldo_base_id>', methods=['DELETE'])
+@jwt_required()
+def eliminar_sueldo_base(sueldo_base_id):
+    try:
+        usuario_id = get_jwt_identity()
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Obtener sucursal activa del usuario
+        cursor.execute("SELECT id_sucursalactiva FROM general_dim_usuario WHERE id = %s", (usuario_id,))
+        usuario = cursor.fetchone()
+        if not usuario or not usuario['id_sucursalactiva']:
+            return jsonify({"error": "No se encontró la sucursal activa del usuario"}), 400
+        
+        # Verificar que el sueldo base existe y el colaborador pertenece a la sucursal del usuario
+        cursor.execute("""
+            SELECT sb.*, c.nombre, c.apellido_paterno, c.apellido_materno, c.id_sucursal
+            FROM rrhh_fact_sueldobase sb
+            JOIN general_dim_colaborador c ON sb.id_colaborador = c.id
+            WHERE sb.id = %s AND c.id_sucursal = %s
+        """, (sueldo_base_id, usuario['id_sucursalactiva']))
+        
+        sueldo_base = cursor.fetchone()
+        if not sueldo_base:
+            return jsonify({"error": "Sueldo base no encontrado"}), 404
+        
+        # Eliminar el sueldo base
+        cursor.execute("DELETE FROM rrhh_fact_sueldobase WHERE id = %s", (sueldo_base_id,))
+        conn.commit()
+        
+        cursor.close()
+        conn.close()
+        
+        nombre_colaborador = f"{sueldo_base['nombre']} {sueldo_base['apellido_paterno']} {sueldo_base.get('apellido_materno', '')}".strip()
+        
+        return jsonify({
+            "message": f"Sueldo base de {nombre_colaborador} eliminado correctamente",
+            "sueldo_base_eliminado": {
+                "id": sueldo_base_id,
+                "sueldobase": sueldo_base['sueldobase'],
+                "fecha": sueldo_base['fecha'],
+                "colaborador": nombre_colaborador
             }
         }), 200
         
