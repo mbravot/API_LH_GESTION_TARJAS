@@ -61,11 +61,15 @@ def listar_rendimientos_propios_por_actividad(id_actividad):
                            WHEN a.id_tipoceco = 4 THEN (SELECT ce2.nombre FROM tarja_fact_cecomaquinaria cm2 JOIN general_dim_ceco ce2 ON cm2.id_ceco = ce2.id WHERE cm2.id_actividad = a.id LIMIT 1)
                            WHEN a.id_tipoceco = 5 THEN (SELECT ce2.nombre FROM tarja_fact_cecoriego cr2 JOIN general_dim_ceco ce2 ON cr2.id_ceco = ce2.id WHERE cr2.id_actividad = a.id LIMIT 1)
                        END
-                   ) as nombre_ceco
+                   ) as nombre_ceco,
+                   sb.sueldobase,
+                   sb.base_dia,
+                   sb.hora_dia
             FROM tarja_fact_rendimientopropio r
             JOIN general_dim_colaborador c ON r.id_colaborador = c.id
             JOIN tarja_fact_actividad a ON r.id_actividad = a.id
             LEFT JOIN general_dim_ceco ce ON r.id_ceco = ce.id
+            LEFT JOIN rrhh_fact_sueldobase sb ON c.id_sueldobaseactivo = sb.id
             WHERE r.id_actividad = %s
             ORDER BY c.nombre, c.apellido_paterno, c.apellido_materno
         """, (id_actividad,))
