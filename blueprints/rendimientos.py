@@ -30,33 +30,75 @@ def obtener_rendimientos(id_actividad):
         if tipo == 1:  # Individual
             if tipo_trabajador == 1:  # Propio
                 cursor.execute("""
-                    SELECT r.*, l.nombre AS labor, c.nombre AS colaborador, b.nombre AS bono
+                    SELECT r.*, l.nombre AS labor, c.nombre AS colaborador, b.nombre AS bono,
+                           COALESCE(ce.nombre, 
+                               CASE 
+                                   WHEN a.id_tipoceco = 1 THEN (SELECT ce2.nombre FROM tarja_fact_cecoadministrativo ca2 JOIN general_dim_ceco ce2 ON ca2.id_ceco = ce2.id WHERE ca2.id_actividad = a.id LIMIT 1)
+                                   WHEN a.id_tipoceco = 2 THEN (SELECT ce2.nombre FROM tarja_fact_cecoproductivo cp2 JOIN general_dim_ceco ce2 ON cp2.id_ceco = ce2.id WHERE cp2.id_actividad = a.id LIMIT 1)
+                                   WHEN a.id_tipoceco = 3 THEN (SELECT ce2.nombre FROM tarja_fact_cecoinversion ci2 JOIN general_dim_ceco ce2 ON ci2.id_ceco = ce2.id WHERE ci2.id_actividad = a.id LIMIT 1)
+                                   WHEN a.id_tipoceco = 4 THEN (SELECT ce2.nombre FROM tarja_fact_cecomaquinaria cm2 JOIN general_dim_ceco ce2 ON cm2.id_ceco = ce2.id WHERE cm2.id_actividad = a.id LIMIT 1)
+                                   WHEN a.id_tipoceco = 5 THEN (SELECT ce2.nombre FROM tarja_fact_cecoriego cr2 JOIN general_dim_ceco ce2 ON cr2.id_ceco = ce2.id WHERE cr2.id_actividad = a.id LIMIT 1)
+                               END
+                           ) as nombre_ceco
                     FROM tarja_fact_rendimientopropio r
                     LEFT JOIN tarja_fact_actividad a ON r.id_actividad = a.id
                     LEFT JOIN general_dim_labor l ON a.id_labor = l.id
                     LEFT JOIN general_dim_colaborador c ON r.id_colaborador = c.id
                     LEFT JOIN general_dim_bono b ON r.id_bono = b.id
+                    LEFT JOIN general_dim_ceco ce ON r.id_ceco = ce.id
                     WHERE r.id_actividad = %s
                 """, (id_actividad,))
                 rendimientos = cursor.fetchall()
             elif tipo_trabajador == 2:  # Contratista
                 cursor.execute("""
-                    SELECT r.*, l.nombre AS labor, t.nombre AS trabajador, p.porcentaje AS porcentaje_trabajador
+                    SELECT r.*, l.nombre AS labor, t.nombre AS trabajador, p.porcentaje AS porcentaje_trabajador,
+                           COALESCE(cp.id_ceco, ci.id_ceco, cm.id_ceco, cr.id_ceco, ca.id_ceco) AS id_ceco,
+                           COALESCE(ce.nombre, 
+                               CASE 
+                                   WHEN a.id_tipoceco = 1 THEN (SELECT ce2.nombre FROM tarja_fact_cecoadministrativo ca2 JOIN general_dim_ceco ce2 ON ca2.id_ceco = ce2.id WHERE ca2.id_actividad = a.id LIMIT 1)
+                                   WHEN a.id_tipoceco = 2 THEN (SELECT ce2.nombre FROM tarja_fact_cecoproductivo cp2 JOIN general_dim_ceco ce2 ON cp2.id_ceco = ce2.id WHERE cp2.id_actividad = a.id LIMIT 1)
+                                   WHEN a.id_tipoceco = 3 THEN (SELECT ce2.nombre FROM tarja_fact_cecoinversion ci2 JOIN general_dim_ceco ce2 ON ci2.id_ceco = ce2.id WHERE ci2.id_actividad = a.id LIMIT 1)
+                                   WHEN a.id_tipoceco = 4 THEN (SELECT ce2.nombre FROM tarja_fact_cecomaquinaria cm2 JOIN general_dim_ceco ce2 ON cm2.id_ceco = ce2.id WHERE cm2.id_actividad = a.id LIMIT 1)
+                                   WHEN a.id_tipoceco = 5 THEN (SELECT ce2.nombre FROM tarja_fact_cecoriego cr2 JOIN general_dim_ceco ce2 ON cr2.id_ceco = ce2.id WHERE cr2.id_actividad = a.id LIMIT 1)
+                               END
+                           ) as nombre_ceco
                     FROM tarja_fact_rendimientocontratista r
                     LEFT JOIN tarja_fact_actividad a ON r.id_actividad = a.id
                     LEFT JOIN general_dim_labor l ON a.id_labor = l.id
                     LEFT JOIN general_dim_trabajador t ON r.id_trabajador = t.id
                     LEFT JOIN general_dim_porcentajecontratista p ON r.id_porcentaje_individual = p.id
+                    LEFT JOIN tarja_fact_cecoproductivo cp ON a.id = cp.id_actividad
+                    LEFT JOIN tarja_fact_cecoinversion ci ON a.id = ci.id_actividad
+                    LEFT JOIN tarja_fact_cecomaquinaria cm ON a.id = cm.id_actividad
+                    LEFT JOIN tarja_fact_cecoriego cr ON a.id = cr.id_actividad
+                    LEFT JOIN tarja_fact_cecoadministrativo ca ON a.id = ca.id_actividad
+                    LEFT JOIN general_dim_ceco ce ON COALESCE(cp.id_ceco, ci.id_ceco, cm.id_ceco, cr.id_ceco, ca.id_ceco) = ce.id
                     WHERE r.id_actividad = %s
                 """, (id_actividad,))
                 rendimientos = cursor.fetchall()
         elif tipo == 2:  # Grupal
             cursor.execute("""
-                SELECT rg.*, a.id_labor, l.nombre AS labor, p.porcentaje AS porcentaje_grupal
+                SELECT rg.*, a.id_labor, l.nombre AS labor, p.porcentaje AS porcentaje_grupal,
+                       COALESCE(cp.id_ceco, ci.id_ceco, cm.id_ceco, cr.id_ceco, ca.id_ceco) AS id_ceco,
+                       COALESCE(ce.nombre, 
+                           CASE 
+                               WHEN a.id_tipoceco = 1 THEN (SELECT ce2.nombre FROM tarja_fact_cecoadministrativo ca2 JOIN general_dim_ceco ce2 ON ca2.id_ceco = ce2.id WHERE ca2.id_actividad = a.id LIMIT 1)
+                               WHEN a.id_tipoceco = 2 THEN (SELECT ce2.nombre FROM tarja_fact_cecoproductivo cp2 JOIN general_dim_ceco ce2 ON cp2.id_ceco = ce2.id WHERE cp2.id_actividad = a.id LIMIT 1)
+                               WHEN a.id_tipoceco = 3 THEN (SELECT ce2.nombre FROM tarja_fact_cecoinversion ci2 JOIN general_dim_ceco ce2 ON ci2.id_ceco = ce2.id WHERE ci2.id_actividad = a.id LIMIT 1)
+                               WHEN a.id_tipoceco = 4 THEN (SELECT ce2.nombre FROM tarja_fact_cecomaquinaria cm2 JOIN general_dim_ceco ce2 ON cm2.id_ceco = ce2.id WHERE cm2.id_actividad = a.id LIMIT 1)
+                               WHEN a.id_tipoceco = 5 THEN (SELECT ce2.nombre FROM tarja_fact_cecoriego cr2 JOIN general_dim_ceco ce2 ON cr2.id_ceco = ce2.id WHERE cr2.id_actividad = a.id LIMIT 1)
+                           END
+                       ) as nombre_ceco
                 FROM tarja_fact_redimientogrupal rg
                 LEFT JOIN tarja_fact_actividad a ON rg.id_actividad = a.id
                 LEFT JOIN general_dim_labor l ON a.id_labor = l.id
                 LEFT JOIN general_dim_porcentajecontratista p ON rg.id_porcentaje = p.id
+                LEFT JOIN tarja_fact_cecoproductivo cp ON a.id = cp.id_actividad
+                LEFT JOIN tarja_fact_cecoinversion ci ON a.id = ci.id_actividad
+                LEFT JOIN tarja_fact_cecomaquinaria cm ON a.id = cm.id_actividad
+                LEFT JOIN tarja_fact_cecoriego cr ON a.id = cr.id_actividad
+                LEFT JOIN tarja_fact_cecoadministrativo ca ON a.id = ca.id_actividad
+                LEFT JOIN general_dim_ceco ce ON COALESCE(cp.id_ceco, ci.id_ceco, cm.id_ceco, cr.id_ceco, ca.id_ceco) = ce.id
                 WHERE rg.id_actividad = %s
             """, (id_actividad,))
             rendimientos = cursor.fetchall()
@@ -272,14 +314,25 @@ def obtener_rendimientos_individuales_propios():
                 r.horas_trabajadas,
                 r.horas_extras,
                 r.id_bono,
+                r.id_ceco,
                 l.nombre as nombre_actividad,
                 c.nombre as nombre_colaborador,
-                b.nombre as nombre_bono
+                b.nombre as nombre_bono,
+                COALESCE(ce.nombre, 
+                    CASE 
+                        WHEN a.id_tipoceco = 1 THEN (SELECT ce2.nombre FROM tarja_fact_cecoadministrativo ca2 JOIN general_dim_ceco ce2 ON ca2.id_ceco = ce2.id WHERE ca2.id_actividad = a.id LIMIT 1)
+                        WHEN a.id_tipoceco = 2 THEN (SELECT ce2.nombre FROM tarja_fact_cecoproductivo cp2 JOIN general_dim_ceco ce2 ON cp2.id_ceco = ce2.id WHERE cp2.id_actividad = a.id LIMIT 1)
+                        WHEN a.id_tipoceco = 3 THEN (SELECT ce2.nombre FROM tarja_fact_cecoinversion ci2 JOIN general_dim_ceco ce2 ON ci2.id_ceco = ce2.id WHERE ci2.id_actividad = a.id LIMIT 1)
+                        WHEN a.id_tipoceco = 4 THEN (SELECT ce2.nombre FROM tarja_fact_cecomaquinaria cm2 JOIN general_dim_ceco ce2 ON cm2.id_ceco = ce2.id WHERE cm2.id_actividad = a.id LIMIT 1)
+                        WHEN a.id_tipoceco = 5 THEN (SELECT ce2.nombre FROM tarja_fact_cecoriego cr2 JOIN general_dim_ceco ce2 ON cr2.id_ceco = ce2.id WHERE cr2.id_actividad = a.id LIMIT 1)
+                    END
+                ) as nombre_ceco
             FROM tarja_fact_rendimientopropio r
             JOIN tarja_fact_actividad a ON r.id_actividad = a.id
             JOIN general_dim_labor l ON a.id_labor = l.id
             JOIN general_dim_colaborador c ON r.id_colaborador = c.id
             LEFT JOIN general_dim_bono b ON r.id_bono = b.id
+            LEFT JOIN general_dim_ceco ce ON r.id_ceco = ce.id
             WHERE a.id_sucursalactiva = %s
         """
         params = [id_sucursal]
@@ -331,12 +384,28 @@ def obtener_rendimientos_individuales_contratistas():
                 t.nombre as nombre_trabajador,
                 t.apellido_paterno,
                 t.apellido_materno,
-                p.porcentaje
+                p.porcentaje,
+                COALESCE(cp.id_ceco, ci.id_ceco, cm.id_ceco, cr.id_ceco, ca.id_ceco) AS id_ceco,
+                COALESCE(ce.nombre, 
+                    CASE 
+                        WHEN a.id_tipoceco = 1 THEN (SELECT ce2.nombre FROM tarja_fact_cecoadministrativo ca2 JOIN general_dim_ceco ce2 ON ca2.id_ceco = ce2.id WHERE ca2.id_actividad = a.id LIMIT 1)
+                        WHEN a.id_tipoceco = 2 THEN (SELECT ce2.nombre FROM tarja_fact_cecoproductivo cp2 JOIN general_dim_ceco ce2 ON cp2.id_ceco = ce2.id WHERE cp2.id_actividad = a.id LIMIT 1)
+                        WHEN a.id_tipoceco = 3 THEN (SELECT ce2.nombre FROM tarja_fact_cecoinversion ci2 JOIN general_dim_ceco ce2 ON ci2.id_ceco = ce2.id WHERE ci2.id_actividad = a.id LIMIT 1)
+                        WHEN a.id_tipoceco = 4 THEN (SELECT ce2.nombre FROM tarja_fact_cecomaquinaria cm2 JOIN general_dim_ceco ce2 ON cm2.id_ceco = ce2.id WHERE cm2.id_actividad = a.id LIMIT 1)
+                        WHEN a.id_tipoceco = 5 THEN (SELECT ce2.nombre FROM tarja_fact_cecoriego cr2 JOIN general_dim_ceco ce2 ON cr2.id_ceco = ce2.id WHERE cr2.id_actividad = a.id LIMIT 1)
+                    END
+                ) as nombre_ceco
             FROM tarja_fact_rendimientocontratista r
             JOIN tarja_fact_actividad a ON r.id_actividad = a.id
             JOIN general_dim_labor l ON a.id_labor = l.id
             JOIN general_dim_trabajador t ON r.id_trabajador = t.id
             JOIN general_dim_porcentajecontratista p ON r.id_porcentaje_individual = p.id
+            LEFT JOIN tarja_fact_cecoproductivo cp ON a.id = cp.id_actividad
+            LEFT JOIN tarja_fact_cecoinversion ci ON a.id = ci.id_actividad
+            LEFT JOIN tarja_fact_cecomaquinaria cm ON a.id = cm.id_actividad
+            LEFT JOIN tarja_fact_cecoriego cr ON a.id = cr.id_actividad
+            LEFT JOIN tarja_fact_cecoadministrativo ca ON a.id = ca.id_actividad
+            LEFT JOIN general_dim_ceco ce ON COALESCE(cp.id_ceco, ci.id_ceco, cm.id_ceco, cr.id_ceco, ca.id_ceco) = ce.id
             WHERE a.id_sucursalactiva = %s
         """
         params = [id_sucursal]
@@ -387,11 +456,27 @@ def obtener_rendimientos_grupales():
                 rg.cantidad_trab,
                 rg.id_porcentaje,
                 l.nombre as nombre_actividad,
-                p.porcentaje as porcentaje_grupal
+                p.porcentaje as porcentaje_grupal,
+                COALESCE(cp.id_ceco, ci.id_ceco, cm.id_ceco, cr.id_ceco, ca.id_ceco) AS id_ceco,
+                COALESCE(ce.nombre, 
+                    CASE 
+                        WHEN a.id_tipoceco = 1 THEN (SELECT ce2.nombre FROM tarja_fact_cecoadministrativo ca2 JOIN general_dim_ceco ce2 ON ca2.id_ceco = ce2.id WHERE ca2.id_actividad = a.id LIMIT 1)
+                        WHEN a.id_tipoceco = 2 THEN (SELECT ce2.nombre FROM tarja_fact_cecoproductivo cp2 JOIN general_dim_ceco ce2 ON cp2.id_ceco = ce2.id WHERE cp2.id_actividad = a.id LIMIT 1)
+                        WHEN a.id_tipoceco = 3 THEN (SELECT ce2.nombre FROM tarja_fact_cecoinversion ci2 JOIN general_dim_ceco ce2 ON ci2.id_ceco = ce2.id WHERE ci2.id_actividad = a.id LIMIT 1)
+                        WHEN a.id_tipoceco = 4 THEN (SELECT ce2.nombre FROM tarja_fact_cecomaquinaria cm2 JOIN general_dim_ceco ce2 ON cm2.id_ceco = ce2.id WHERE cm2.id_actividad = a.id LIMIT 1)
+                        WHEN a.id_tipoceco = 5 THEN (SELECT ce2.nombre FROM tarja_fact_cecoriego cr2 JOIN general_dim_ceco ce2 ON cr2.id_ceco = ce2.id WHERE cr2.id_actividad = a.id LIMIT 1)
+                    END
+                ) as nombre_ceco
             FROM tarja_fact_redimientogrupal rg
             JOIN tarja_fact_actividad a ON rg.id_actividad = a.id
             JOIN general_dim_labor l ON a.id_labor = l.id
             LEFT JOIN general_dim_porcentajecontratista p ON rg.id_porcentaje = p.id
+            LEFT JOIN tarja_fact_cecoproductivo cp ON a.id = cp.id_actividad
+            LEFT JOIN tarja_fact_cecoinversion ci ON a.id = ci.id_actividad
+            LEFT JOIN tarja_fact_cecomaquinaria cm ON a.id = cm.id_actividad
+            LEFT JOIN tarja_fact_cecoriego cr ON a.id = cr.id_actividad
+            LEFT JOIN tarja_fact_cecoadministrativo ca ON a.id = ca.id_actividad
+            LEFT JOIN general_dim_ceco ce ON COALESCE(cp.id_ceco, ci.id_ceco, cm.id_ceco, cr.id_ceco, ca.id_ceco) = ce.id
             WHERE a.id_sucursalactiva = %s
         """
         params = [id_sucursal]

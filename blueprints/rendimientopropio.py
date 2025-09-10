@@ -52,9 +52,20 @@ def listar_rendimientos_propios_por_actividad(id_actividad):
         # Obtener rendimientos propios
         cursor.execute("""
             SELECT r.id, r.id_colaborador, c.nombre as nombre_colaborador, c.apellido_paterno, c.apellido_materno,
-                   r.horas_trabajadas, r.rendimiento, r.horas_extras, r.id_bono
+                   r.horas_trabajadas, r.rendimiento, r.horas_extras, r.id_bono, r.id_ceco,
+                   COALESCE(ce.nombre, 
+                       CASE 
+                           WHEN a.id_tipoceco = 1 THEN (SELECT ce2.nombre FROM tarja_fact_cecoadministrativo ca2 JOIN general_dim_ceco ce2 ON ca2.id_ceco = ce2.id WHERE ca2.id_actividad = a.id LIMIT 1)
+                           WHEN a.id_tipoceco = 2 THEN (SELECT ce2.nombre FROM tarja_fact_cecoproductivo cp2 JOIN general_dim_ceco ce2 ON cp2.id_ceco = ce2.id WHERE cp2.id_actividad = a.id LIMIT 1)
+                           WHEN a.id_tipoceco = 3 THEN (SELECT ce2.nombre FROM tarja_fact_cecoinversion ci2 JOIN general_dim_ceco ce2 ON ci2.id_ceco = ce2.id WHERE ci2.id_actividad = a.id LIMIT 1)
+                           WHEN a.id_tipoceco = 4 THEN (SELECT ce2.nombre FROM tarja_fact_cecomaquinaria cm2 JOIN general_dim_ceco ce2 ON cm2.id_ceco = ce2.id WHERE cm2.id_actividad = a.id LIMIT 1)
+                           WHEN a.id_tipoceco = 5 THEN (SELECT ce2.nombre FROM tarja_fact_cecoriego cr2 JOIN general_dim_ceco ce2 ON cr2.id_ceco = ce2.id WHERE cr2.id_actividad = a.id LIMIT 1)
+                       END
+                   ) as nombre_ceco
             FROM tarja_fact_rendimientopropio r
             JOIN general_dim_colaborador c ON r.id_colaborador = c.id
+            JOIN tarja_fact_actividad a ON r.id_actividad = a.id
+            LEFT JOIN general_dim_ceco ce ON r.id_ceco = ce.id
             WHERE r.id_actividad = %s
             ORDER BY c.nombre, c.apellido_paterno, c.apellido_materno
         """, (id_actividad,))
