@@ -8,7 +8,7 @@ sueldos_bp = Blueprint('sueldos', __name__)
 @sueldos_bp.route('/sueldos-base', methods=['GET'])
 @jwt_required()
 def listar_sueldos_base():
-    """Listar todos los sueldos base con información del colaborador"""
+    """Listar todos los sueldos base agrupados por colaborador"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
@@ -25,33 +25,39 @@ def listar_sueldos_base():
             
         id_sucursal = usuario['id_sucursalactiva']
         
-        # Listar sueldos base con información del colaborador
+        # Listar sueldos base agrupados por colaborador
         cursor.execute("""
             SELECT 
-                sb.id,
-                sb.sueldobase,
-                sb.id_colaborador,
-                sb.fecha,
-                sb.base_dia,
-                sb.hora_dia,
+                c.id as colaborador_id,
                 CONCAT(c.nombre, ' ', c.apellido_paterno,
                        CASE WHEN c.apellido_materno IS NOT NULL 
                             THEN CONCAT(' ', c.apellido_materno) 
                             ELSE '' END) as nombre_colaborador,
                 c.rut,
-                s.nombre as nombre_sucursal
-            FROM rrhh_fact_sueldobase sb
-            INNER JOIN general_dim_colaborador c ON sb.id_colaborador = c.id
+                s.nombre as nombre_sucursal,
+                JSON_ARRAYAGG(
+                    JSON_OBJECT(
+                        'id', sb.id,
+                        'sueldobase', sb.sueldobase,
+                        'fecha', sb.fecha,
+                        'base_dia', sb.base_dia,
+                        'hora_dia', sb.hora_dia
+                    ) ORDER BY sb.fecha DESC
+                ) as sueldos_base
+            FROM general_dim_colaborador c
             INNER JOIN general_dim_sucursal s ON c.id_sucursal = s.id
+            LEFT JOIN rrhh_fact_sueldobase sb ON c.id = sb.id_colaborador
             WHERE c.id_sucursal = %s
-            ORDER BY sb.fecha DESC, c.nombre, c.apellido_paterno
+            GROUP BY c.id, c.nombre, c.apellido_paterno, c.apellido_materno, c.rut, s.nombre
+            HAVING COUNT(sb.id) > 0
+            ORDER BY c.nombre, c.apellido_paterno
         """, (id_sucursal,))
         
-        sueldos = cursor.fetchall()
+        colaboradores = cursor.fetchall()
         cursor.close()
         conn.close()
         
-        return jsonify(sueldos), 200
+        return jsonify(colaboradores), 200
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500
