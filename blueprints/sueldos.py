@@ -190,6 +190,20 @@ def crear_sueldo_base():
         """, (sueldobase, id_colaborador, fecha))
         
         sueldo_id = cursor.lastrowid
+        
+        # Actualizar id_sueldobaseactivo del colaborador con el sueldo base más reciente
+        cursor.execute("""
+            UPDATE general_dim_colaborador 
+            SET id_sueldobaseactivo = (
+                SELECT id 
+                FROM rrhh_fact_sueldobase 
+                WHERE id_colaborador = %s 
+                ORDER BY fecha DESC 
+                LIMIT 1
+            )
+            WHERE id = %s
+        """, (id_colaborador, id_colaborador))
+        
         conn.commit()
         
         # Obtener el sueldo base creado con información del colaborador
@@ -321,6 +335,25 @@ def editar_sueldo_base(sueldo_id):
         """
         
         cursor.execute(query, valores)
+        
+        # Obtener el id_colaborador del sueldo base editado para actualizar su id_sueldobaseactivo
+        cursor.execute("SELECT id_colaborador FROM rrhh_fact_sueldobase WHERE id = %s", (sueldo_id,))
+        sueldo_editado = cursor.fetchone()
+        
+        if sueldo_editado:
+            # Actualizar id_sueldobaseactivo del colaborador con el sueldo base más reciente
+            cursor.execute("""
+                UPDATE general_dim_colaborador 
+                SET id_sueldobaseactivo = (
+                    SELECT id 
+                    FROM rrhh_fact_sueldobase 
+                    WHERE id_colaborador = %s 
+                    ORDER BY fecha DESC 
+                    LIMIT 1
+                )
+                WHERE id = %s
+            """, (sueldo_editado['id_colaborador'], sueldo_editado['id_colaborador']))
+        
         conn.commit()
         
         # Obtener el sueldo base actualizado
@@ -378,7 +411,7 @@ def eliminar_sueldo_base(sueldo_id):
         
         # Verificar que el sueldo base existe y pertenece a un colaborador de la sucursal
         cursor.execute("""
-            SELECT sb.id FROM rrhh_fact_sueldobase sb
+            SELECT sb.id, sb.id_colaborador FROM rrhh_fact_sueldobase sb
             INNER JOIN general_dim_colaborador c ON sb.id_colaborador = c.id
             WHERE sb.id = %s AND c.id_sucursal = %s
         """, (sueldo_id, id_sucursal))
@@ -387,8 +420,24 @@ def eliminar_sueldo_base(sueldo_id):
         if not sueldo_existente:
             return jsonify({"error": "Sueldo base no encontrado o no pertenece a su sucursal"}), 404
             
+        id_colaborador = sueldo_existente['id_colaborador']
+        
         # Eliminar el sueldo base
         cursor.execute("DELETE FROM rrhh_fact_sueldobase WHERE id = %s", (sueldo_id,))
+        
+        # Actualizar id_sueldobaseactivo del colaborador con el sueldo base más reciente (si queda alguno)
+        cursor.execute("""
+            UPDATE general_dim_colaborador 
+            SET id_sueldobaseactivo = (
+                SELECT id 
+                FROM rrhh_fact_sueldobase 
+                WHERE id_colaborador = %s 
+                ORDER BY fecha DESC 
+                LIMIT 1
+            )
+            WHERE id = %s
+        """, (id_colaborador, id_colaborador))
+        
         conn.commit()
         
         cursor.close()
