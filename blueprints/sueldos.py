@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from utils.db import get_db_connection
 from datetime import datetime
+import json
 
 sueldos_bp = Blueprint('sueldos', __name__)
 
@@ -56,6 +57,14 @@ def listar_sueldos_base():
         colaboradores = cursor.fetchall()
         cursor.close()
         conn.close()
+        
+        # Procesar los datos para parsear JSON y ordenar por fecha
+        for colaborador in colaboradores:
+            if colaborador['sueldos_base']:
+                sueldos = json.loads(colaborador['sueldos_base'])
+                # Ordenar por fecha descendente (más reciente primero)
+                sueldos.sort(key=lambda x: x['fecha'], reverse=True)
+                colaborador['sueldos_base'] = sueldos
         
         return jsonify(colaboradores), 200
         
