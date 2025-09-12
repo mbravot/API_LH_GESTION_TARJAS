@@ -42,7 +42,7 @@ def listar_sueldos_base():
                         'fecha', sb.fecha,
                         'base_dia', sb.base_dia,
                         'hora_dia', sb.hora_dia
-                    ) ORDER BY sb.fecha DESC
+                    )
                 ) as sueldos_base
             FROM general_dim_colaborador c
             INNER JOIN general_dim_sucursal s ON c.id_sucursal = s.id
