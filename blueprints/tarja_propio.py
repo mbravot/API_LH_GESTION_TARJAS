@@ -89,6 +89,13 @@ def obtener_tarjas_propios():
         cursor.execute(query, params)
         tarjas = cursor.fetchall()
         
+        # Convertir campos de tiempo a string para evitar errores de serialización JSON
+        for tarja in tarjas:
+            if tarja.get('horas_trabajadas'):
+                tarja['horas_trabajadas'] = str(tarja['horas_trabajadas'])
+            if tarja.get('horas_extras'):
+                tarja['horas_extras'] = str(tarja['horas_extras'])
+        
         cursor.close()
         conn.close()
         
@@ -155,6 +162,13 @@ def obtener_resumen_tarjas_propios():
         
         cursor.execute(query, params)
         resumen = cursor.fetchall()
+        
+        # Convertir campos de tiempo a string para evitar errores de serialización JSON
+        for item in resumen:
+            if item.get('total_horas_trabajadas'):
+                item['total_horas_trabajadas'] = str(item['total_horas_trabajadas'])
+            if item.get('total_horas_extras'):
+                item['total_horas_extras'] = str(item['total_horas_extras'])
         
         cursor.close()
         conn.close()
