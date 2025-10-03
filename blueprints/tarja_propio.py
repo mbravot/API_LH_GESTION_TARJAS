@@ -30,6 +30,7 @@ def obtener_tarjas_propios():
         id_colaborador = request.args.get('id_colaborador')
         id_labor = request.args.get('id_labor')
         id_ceco = request.args.get('id_ceco')
+        id_estadoactividad = request.args.get('id_estadoactividad')
         
         # Construir query base
         query = """
@@ -55,7 +56,9 @@ def obtener_tarjas_propios():
                 liquido_trato_dia,
                 horas_extras,
                 valor_he,
-                `3000*dr.horas_extras`
+                total_HE,
+                id_estadoactividad,
+                estado
             FROM v_tarja_tarjaweb_tarjaspropios
             WHERE id_sucursal = %s
         """
@@ -82,6 +85,10 @@ def obtener_tarjas_propios():
         if id_ceco:
             query += " AND id_ceco = %s"
             params.append(id_ceco)
+            
+        if id_estadoactividad:
+            query += " AND id_estadoactividad = %s"
+            params.append(id_estadoactividad)
         
         # Ordenar por fecha descendente
         query += " ORDER BY fecha DESC, colaborador ASC"
