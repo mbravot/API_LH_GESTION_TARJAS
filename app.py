@@ -62,6 +62,7 @@ def create_app():
     from blueprints.bono_especial import bono_especial_bp
     from blueprints.sueldos import sueldos_bp
     from blueprints.sucursales import sucursales_bp
+    from blueprints.tarja_propio import tarja_propio_bp
 
     
     # Registrar blueprints
@@ -84,6 +85,7 @@ def create_app():
     app.register_blueprint(bono_especial_bp, url_prefix='/api/bono-especial')
     app.register_blueprint(sueldos_bp, url_prefix='/api/sueldos')
     app.register_blueprint(sucursales_bp, url_prefix='/api/sucursal')
+    app.register_blueprint(tarja_propio_bp, url_prefix='/api/tarja-propio')
     
     # Crear un nuevo blueprint para las rutas raíz
     root_bp = Blueprint('root_bp', __name__)
