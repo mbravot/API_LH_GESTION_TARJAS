@@ -296,9 +296,25 @@ def editar_usuario(usuario_id):
         print(f"DEBUG: SQL: {sql}")
         print(f"DEBUG: Valores: {valores}")
         print(f"DEBUG: Usuario ID: {usuario_id} (tipo: {type(usuario_id)})")
+        print(f"DEBUG: Longitud del ID: {len(str(usuario_id))}")
+        print(f"DEBUG: ID como string: '{str(usuario_id)}'")
         
-        cursor.execute(sql, valores)
-        filas_afectadas = cursor.rowcount
+        # Verificar que el ID no esté vacío o sea inválido
+        if not usuario_id or str(usuario_id).strip() == '':
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "ID de usuario inválido o vacío"}), 400
+        
+        try:
+            cursor.execute(sql, valores)
+            filas_afectadas = cursor.rowcount
+            print(f"DEBUG: Consulta ejecutada exitosamente. Filas afectadas: {filas_afectadas}")
+        except Exception as sql_error:
+            print(f"DEBUG: Error SQL específico: {sql_error}")
+            print(f"DEBUG: Tipo de error: {type(sql_error)}")
+            cursor.close()
+            conn.close()
+            return jsonify({"error": f"Error en la consulta SQL: {str(sql_error)}"}), 500
         
         # Manejar permisos si se proporcionan
         if permisos is not None and isinstance(permisos, list):
