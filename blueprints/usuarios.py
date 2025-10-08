@@ -248,12 +248,12 @@ def editar_usuario(usuario_id):
         print(f"DEBUG: Usuario encontrado - ID: {usuario_existente['id']}, Usuario: {usuario_existente['usuario']}")
 
         # Verificar que la sucursal existe
-        cursor.execute("SELECT id FROM general_dim_sucursal WHERE id = %s AND id_sucursaltipo = 1", (id_sucursalactiva,))
+        cursor.execute("SELECT id FROM general_dim_sucursal WHERE id = %s", (id_sucursalactiva,))
         sucursal = cursor.fetchone()
         if not sucursal:
             cursor.close()
             conn.close()
-            return jsonify({"error": "La sucursal especificada no existe o no es del tipo correcto"}), 400
+            return jsonify({"error": "La sucursal especificada no existe"}), 400
 
 
 
