@@ -54,6 +54,7 @@ def obtener_usuarios():
         END AS nombre_completo
     FROM general_dim_usuario u
     LEFT JOIN general_dim_sucursal s ON u.id_sucursalactiva = s.id
+    ORDER BY nombre_completo ASC
 """)
 
         usuarios = cursor.fetchall()
