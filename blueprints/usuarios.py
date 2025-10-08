@@ -82,6 +82,7 @@ def crear_usuario():
     apellido_paterno = data.get('apellido_paterno')
     apellido_materno = data.get('apellido_materno')
     permisos = data.get('permisos', [])  # Lista opcional de permisos
+    sucursales_adicionales = data.get('sucursales_adicionales', [])  # Lista opcional de sucursales adicionales
 
 
     # Convertir id_sucursalactiva a entero si es necesario
@@ -157,6 +158,14 @@ def crear_usuario():
                     VALUES (%s, %s, %s)
                 """, (permiso_pivot_id, usuario_id, permiso_id))
         
+        # Asignar sucursales adicionales si se proporcionan
+        if sucursales_adicionales and isinstance(sucursales_adicionales, list):
+            for sucursal_id in sucursales_adicionales:
+                cursor.execute("""
+                    INSERT INTO usuario_pivot_sucursal_usuario (id_sucursal, id_usuario)
+                    VALUES (%s, %s)
+                """, (sucursal_id, usuario_id))
+        
         conn.commit()
         cursor.close()
         conn.close()
@@ -170,7 +179,8 @@ def crear_usuario():
             "nombre": nombre,
             "apellido_paterno": apellido_paterno,
             "apellido_materno": apellido_materno,
-            "permisos_asignados": permisos
+            "permisos_asignados": permisos,
+            "sucursales_adicionales": sucursales_adicionales
         }), 201
         
     except Exception as e:
@@ -194,6 +204,7 @@ def editar_usuario(usuario_id):
     apellido_paterno = data.get('apellido_paterno')
     apellido_materno = data.get('apellido_materno')
     permisos = data.get('permisos', [])  # Lista opcional de permisos
+    sucursales_adicionales = data.get('sucursales_adicionales', [])  # Lista opcional de sucursales adicionales
 
     id_estado = data.get('id_estado')  # Opcional, para cambiar estado
 
@@ -287,6 +298,21 @@ def editar_usuario(usuario_id):
                     VALUES (%s, %s, %s)
                 """, (permiso_pivot_id, usuario_id, permiso_id))
         
+        # Manejar sucursales adicionales si se proporcionan
+        if sucursales_adicionales is not None and isinstance(sucursales_adicionales, list):
+            # Eliminar sucursales adicionales existentes del usuario
+            cursor.execute("""
+                DELETE FROM usuario_pivot_sucursal_usuario 
+                WHERE id_usuario = %s
+            """, (usuario_id,))
+            
+            # Asignar nuevas sucursales adicionales
+            for sucursal_id in sucursales_adicionales:
+                cursor.execute("""
+                    INSERT INTO usuario_pivot_sucursal_usuario (id_sucursal, id_usuario)
+                    VALUES (%s, %s)
+                """, (sucursal_id, usuario_id))
+        
         conn.commit()
         cursor.close()
         conn.close()
@@ -301,7 +327,56 @@ def editar_usuario(usuario_id):
             "apellido_paterno": apellido_paterno,
             "apellido_materno": apellido_materno,
             "permisos_actualizados": permisos if permisos is not None else "No modificados",
+            "sucursales_adicionales": sucursales_adicionales if sucursales_adicionales is not None else "No modificadas",
             "filas_afectadas": filas_afectadas
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# 🔹 Obtener sucursales de un usuario específico
+@usuarios_bp.route('/<string:usuario_id>/sucursales', methods=['GET'])
+@jwt_required()
+def obtener_sucursales_usuario(usuario_id):
+    """Obtener sucursales adicionales de un usuario específico"""
+    usuario_logueado = get_jwt_identity()
+    if not verificar_permiso_full(usuario_logueado):
+        return jsonify({"error": "No autorizado. Se requiere permiso Full para gestionar usuarios"}), 403
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Verificar que el usuario existe
+        cursor.execute("SELECT id FROM general_dim_usuario WHERE id = %s", (usuario_id,))
+        usuario_existente = cursor.fetchone()
+        if not usuario_existente:
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "Usuario no encontrado"}), 404
+        
+        # Obtener sucursales del usuario
+        cursor.execute("""
+            SELECT 
+                ps.id_sucursal,
+                s.nombre as nombre_sucursal,
+                s.ubicacion,
+                s.id_empresa,
+                s.id_sucursaltipo
+            FROM usuario_pivot_sucursal_usuario ps
+            LEFT JOIN general_dim_sucursal s ON ps.id_sucursal = s.id
+            WHERE ps.id_usuario = %s
+            ORDER BY s.nombre ASC
+        """, (usuario_id,))
+        
+        sucursales = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "usuario_id": usuario_id,
+            "sucursales": sucursales,
+            "total": len(sucursales)
         }), 200
         
     except Exception as e:
@@ -410,6 +485,38 @@ def obtener_permisos_disponibles():
         return jsonify({
             "permisos": permisos,
             "total": len(permisos)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# 🔹 Obtener sucursales disponibles
+@usuarios_bp.route('/sucursales-disponibles', methods=['GET'])
+@jwt_required()
+def obtener_sucursales_disponibles():
+    """Obtener sucursales disponibles para asignar a usuarios"""
+    usuario_id = get_jwt_identity()
+    if not verificar_permiso_full(usuario_id):
+        return jsonify({"error": "No autorizado. Se requiere permiso Full para gestionar usuarios"}), 403
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        cursor.execute("""
+            SELECT id, nombre, ubicacion, id_empresa, id_sucursaltipo
+            FROM general_dim_sucursal 
+            WHERE id_estado = 1
+            ORDER BY nombre ASC
+        """)
+        
+        sucursales = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "sucursales": sucursales,
+            "total": len(sucursales)
         }), 200
         
     except Exception as e:
