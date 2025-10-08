@@ -196,6 +196,10 @@ def editar_usuario(usuario_id):
 
     data = request.json
     
+    # Validar que el usuario_id sea válido
+    if not usuario_id or usuario_id.strip() == '':
+        return jsonify({"error": "ID de usuario inválido"}), 400
+    
     usuario_nombre = data.get('usuario')
     correo = data.get('correo')
     clave = data.get('clave')  # Opcional, solo si se quiere cambiar
@@ -231,12 +235,15 @@ def editar_usuario(usuario_id):
         cursor = conn.cursor(dictionary=True)
         
         # Verificar que el usuario a editar existe
-        cursor.execute("SELECT id FROM general_dim_usuario WHERE id = %s", (usuario_id,))
+        cursor.execute("SELECT id, usuario FROM general_dim_usuario WHERE id = %s", (usuario_id,))
         usuario_existente = cursor.fetchone()
         if not usuario_existente:
             cursor.close()
             conn.close()
             return jsonify({"error": "Usuario no encontrado"}), 404
+        
+        # Debug: Log del usuario encontrado
+        print(f"DEBUG: Usuario encontrado - ID: {usuario_existente['id']}, Usuario: {usuario_existente['usuario']}")
 
         # Verificar que la sucursal existe
         cursor.execute("SELECT id FROM general_dim_sucursal WHERE id = %s AND id_sucursaltipo = 1", (id_sucursalactiva,))
@@ -278,6 +285,11 @@ def editar_usuario(usuario_id):
             """
             valores = (usuario_nombre, correo, id_sucursalactiva, id_estado, 
                       nombre, apellido_paterno, apellido_materno, usuario_id)
+        
+        # Debug: Log de la consulta y valores
+        print(f"DEBUG: SQL: {sql}")
+        print(f"DEBUG: Valores: {valores}")
+        print(f"DEBUG: Usuario ID: {usuario_id} (tipo: {type(usuario_id)})")
         
         cursor.execute(sql, valores)
         filas_afectadas = cursor.rowcount
