@@ -131,6 +131,9 @@ def crear_usuario():
         # Generar UUID para el usuario
         usuario_id = str(uuid.uuid4())
 
+        # Manejar valores null correctamente
+        apellido_materno_clean = apellido_materno if apellido_materno is not None and apellido_materno.strip() != '' else None
+        
         # Insertar usuario
         cursor.execute("""
             INSERT INTO general_dim_usuario (
@@ -140,7 +143,7 @@ def crear_usuario():
             )
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (usuario_id, usuario, correo, clave_encriptada, id_sucursalactiva, 
-              id_estado, id_rol, id_perfil, date.today(), nombre, apellido_paterno, apellido_materno))
+              id_estado, id_rol, id_perfil, date.today(), nombre, apellido_paterno, apellido_materno_clean))
         
         # Asignar permiso a la app (id_app = 3)
         pivot_id = str(uuid.uuid4())
@@ -264,6 +267,9 @@ def editar_usuario(usuario_id):
             conn.close()
             return jsonify({"error": "Ya existe otro usuario con ese nombre de usuario o correo"}), 400
 
+        # Manejar valores null correctamente
+        apellido_materno_clean = apellido_materno if apellido_materno is not None and apellido_materno.strip() != '' else None
+        
         # Preparar la actualización
         if clave:  # Solo si se envió una nueva clave
             salt = bcrypt.gensalt()
@@ -275,7 +281,7 @@ def editar_usuario(usuario_id):
                 WHERE id = %s
             """
             valores = (usuario_nombre, correo, clave_encriptada, id_sucursalactiva, id_estado, 
-                      nombre, apellido_paterno, apellido_materno, usuario_id)
+                      nombre, apellido_paterno, apellido_materno_clean, usuario_id)
         else:
             sql = """
                 UPDATE general_dim_usuario 
@@ -284,7 +290,7 @@ def editar_usuario(usuario_id):
                 WHERE id = %s
             """
             valores = (usuario_nombre, correo, id_sucursalactiva, id_estado, 
-                      nombre, apellido_paterno, apellido_materno, usuario_id)
+                      nombre, apellido_paterno, apellido_materno_clean, usuario_id)
         
         # Debug: Log de la consulta y valores
         print(f"DEBUG: SQL: {sql}")
