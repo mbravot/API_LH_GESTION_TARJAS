@@ -155,11 +155,10 @@ def crear_usuario():
         # Asignar permisos opcionales si se proporcionan
         if permisos and isinstance(permisos, list):
             for permiso_id in permisos:
-                permiso_pivot_id = str(uuid.uuid4())
                 cursor.execute("""
-                    INSERT INTO usuario_pivot_permiso_usuario (id, id_usuario, id_permiso)
-                    VALUES (%s, %s, %s)
-                """, (permiso_pivot_id, usuario_id, permiso_id))
+                    INSERT INTO usuario_pivot_permiso_usuario (id_usuario, id_permiso)
+                    VALUES (%s, %s)
+                """, (usuario_id, permiso_id))
         
         # Asignar sucursales adicionales si se proporcionan
         if sucursales_adicionales and isinstance(sucursales_adicionales, list):
@@ -326,11 +325,10 @@ def editar_usuario(usuario_id):
             
             # Asignar nuevos permisos
             for permiso_id in permisos:
-                permiso_pivot_id = str(uuid.uuid4())
                 cursor.execute("""
-                    INSERT INTO usuario_pivot_permiso_usuario (id, id_usuario, id_permiso)
-                    VALUES (%s, %s, %s)
-                """, (permiso_pivot_id, usuario_id, permiso_id))
+                    INSERT INTO usuario_pivot_permiso_usuario (id_usuario, id_permiso)
+                    VALUES (%s, %s)
+                """, (usuario_id, permiso_id))
         
         # Manejar sucursales adicionales si se proporcionan
         if sucursales_adicionales is not None and isinstance(sucursales_adicionales, list):
