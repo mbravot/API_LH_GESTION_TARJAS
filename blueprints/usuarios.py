@@ -18,10 +18,28 @@ def verificar_admin(usuario_id):
     conn.close()
     return usuario and usuario['id_perfil'] == 3
 
+def verificar_permiso_full(usuario_id):
+    """Verifica si el usuario tiene permiso Full (id=6) para gestionar usuarios"""
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT up.id_permiso 
+        FROM usuario_pivot_permiso_usuario up
+        WHERE up.id_usuario = %s AND up.id_permiso = '6'
+    """, (usuario_id,))
+    permiso = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return permiso is not None
+
 # 🔹 Obtener todos los usuarios
 @usuarios_bp.route('/', methods=['GET'])
 @jwt_required()
 def obtener_usuarios():
+    usuario_id = get_jwt_identity()
+    if not verificar_permiso_full(usuario_id):
+        return jsonify({"error": "No autorizado. Se requiere permiso Full para gestionar usuarios"}), 403
+    
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
@@ -50,8 +68,8 @@ def obtener_usuarios():
 @jwt_required()
 def crear_usuario():
     usuario_id = get_jwt_identity()
-    if not verificar_admin(usuario_id):
-        return jsonify({"error": "No autorizado"}), 403
+    if not verificar_permiso_full(usuario_id):
+        return jsonify({"error": "No autorizado. Se requiere permiso Full para gestionar usuarios"}), 403
 
     data = request.json
     
@@ -59,6 +77,10 @@ def crear_usuario():
     correo = data.get('correo')
     clave = data.get('clave')
     id_sucursalactiva = data.get('id_sucursalactiva')
+    nombre = data.get('nombre')
+    apellido_paterno = data.get('apellido_paterno')
+    apellido_materno = data.get('apellido_materno')
+    permisos = data.get('permisos', [])  # Lista opcional de permisos
 
 
     # Convertir id_sucursalactiva a entero si es necesario
@@ -69,8 +91,8 @@ def crear_usuario():
             return jsonify({"error": "id_sucursalactiva debe ser un número válido"}), 400
 
     # Validar campos obligatorios
-    if not usuario or not correo or not clave or not id_sucursalactiva:
-        return jsonify({"error": "Faltan campos obligatorios: usuario, correo, clave, id_sucursalactiva"}), 400
+    if not usuario or not correo or not clave or not id_sucursalactiva or not nombre or not apellido_paterno:
+        return jsonify({"error": "Faltan campos obligatorios: usuario, correo, clave, id_sucursalactiva, nombre, apellido_paterno"}), 400
 
     # Validar que la sucursal existe
     try:
@@ -111,18 +133,28 @@ def crear_usuario():
         cursor.execute("""
             INSERT INTO general_dim_usuario (
                 id, usuario, correo, clave, id_sucursalactiva, 
-                id_estado, id_rol, id_perfil, fecha_creacion
+                id_estado, id_rol, id_perfil, fecha_creacion,
+                nombre, apellido_paterno, apellido_materno
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (usuario_id, usuario, correo, clave_encriptada, id_sucursalactiva, 
-              id_estado, id_rol, id_perfil, date.today()))
+              id_estado, id_rol, id_perfil, date.today(), nombre, apellido_paterno, apellido_materno))
         
-        # Asignar permiso a la app (id_app = 2)
+        # Asignar permiso a la app (id_app = 3)
         pivot_id = str(uuid.uuid4())
         cursor.execute("""
             INSERT INTO usuario_pivot_app_usuario (id, id_usuario, id_app)
             VALUES (%s, %s, %s)
-        """, (pivot_id, usuario_id, 2))
+        """, (pivot_id, usuario_id, 3))
+        
+        # Asignar permisos opcionales si se proporcionan
+        if permisos and isinstance(permisos, list):
+            for permiso_id in permisos:
+                permiso_pivot_id = str(uuid.uuid4())
+                cursor.execute("""
+                    INSERT INTO usuario_pivot_permiso_usuario (id, id_usuario, id_permiso)
+                    VALUES (%s, %s, %s)
+                """, (permiso_pivot_id, usuario_id, permiso_id))
         
         conn.commit()
         cursor.close()
@@ -133,7 +165,11 @@ def crear_usuario():
             "id": usuario_id,
             "usuario": usuario,
             "correo": correo,
-            "id_sucursalactiva": id_sucursalactiva
+            "id_sucursalactiva": id_sucursalactiva,
+            "nombre": nombre,
+            "apellido_paterno": apellido_paterno,
+            "apellido_materno": apellido_materno,
+            "permisos_asignados": permisos
         }), 201
         
     except Exception as e:
@@ -144,8 +180,8 @@ def crear_usuario():
 @jwt_required()
 def editar_usuario(usuario_id):
     usuario_logueado = get_jwt_identity()
-    if not verificar_admin(usuario_logueado):
-        return jsonify({"error": "No autorizado"}), 403
+    if not verificar_permiso_full(usuario_logueado):
+        return jsonify({"error": "No autorizado. Se requiere permiso Full para gestionar usuarios"}), 403
 
     data = request.json
     
@@ -153,6 +189,10 @@ def editar_usuario(usuario_id):
     correo = data.get('correo')
     clave = data.get('clave')  # Opcional, solo si se quiere cambiar
     id_sucursalactiva = data.get('id_sucursalactiva')
+    nombre = data.get('nombre')
+    apellido_paterno = data.get('apellido_paterno')
+    apellido_materno = data.get('apellido_materno')
+    permisos = data.get('permisos', [])  # Lista opcional de permisos
 
     id_estado = data.get('id_estado')  # Opcional, para cambiar estado
 
@@ -171,8 +211,8 @@ def editar_usuario(usuario_id):
             return jsonify({"error": "id_estado debe ser un número válido"}), 400
 
     # Validar campos obligatorios
-    if not usuario_nombre or not correo or not id_sucursalactiva:
-        return jsonify({"error": "Faltan campos obligatorios: usuario, correo, id_sucursalactiva"}), 400
+    if not usuario_nombre or not correo or not id_sucursalactiva or not nombre or not apellido_paterno:
+        return jsonify({"error": "Faltan campos obligatorios: usuario, correo, id_sucursalactiva, nombre, apellido_paterno"}), 400
 
     try:
         conn = get_db_connection()
@@ -211,20 +251,40 @@ def editar_usuario(usuario_id):
             clave_encriptada = bcrypt.hashpw(clave.encode('utf-8'), salt).decode('utf-8')
             sql = """
                 UPDATE general_dim_usuario 
-                SET usuario = %s, correo = %s, clave = %s, id_sucursalactiva = %s, id_estado = %s
+                SET usuario = %s, correo = %s, clave = %s, id_sucursalactiva = %s, id_estado = %s,
+                    nombre = %s, apellido_paterno = %s, apellido_materno = %s
                 WHERE id = %s
             """
-            valores = (usuario_nombre, correo, clave_encriptada, id_sucursalactiva, id_estado, usuario_id)
+            valores = (usuario_nombre, correo, clave_encriptada, id_sucursalactiva, id_estado, 
+                      nombre, apellido_paterno, apellido_materno, usuario_id)
         else:
             sql = """
                 UPDATE general_dim_usuario 
-                SET usuario = %s, correo = %s, id_sucursalactiva = %s, id_estado = %s
+                SET usuario = %s, correo = %s, id_sucursalactiva = %s, id_estado = %s,
+                    nombre = %s, apellido_paterno = %s, apellido_materno = %s
                 WHERE id = %s
             """
-            valores = (usuario_nombre, correo, id_sucursalactiva, id_estado, usuario_id)
+            valores = (usuario_nombre, correo, id_sucursalactiva, id_estado, 
+                      nombre, apellido_paterno, apellido_materno, usuario_id)
         
         cursor.execute(sql, valores)
         filas_afectadas = cursor.rowcount
+        
+        # Manejar permisos si se proporcionan
+        if permisos is not None and isinstance(permisos, list):
+            # Eliminar permisos existentes del usuario
+            cursor.execute("""
+                DELETE FROM usuario_pivot_permiso_usuario 
+                WHERE id_usuario = %s
+            """, (usuario_id,))
+            
+            # Asignar nuevos permisos
+            for permiso_id in permisos:
+                permiso_pivot_id = str(uuid.uuid4())
+                cursor.execute("""
+                    INSERT INTO usuario_pivot_permiso_usuario (id, id_usuario, id_permiso)
+                    VALUES (%s, %s, %s)
+                """, (permiso_pivot_id, usuario_id, permiso_id))
         
         conn.commit()
         cursor.close()
@@ -236,7 +296,58 @@ def editar_usuario(usuario_id):
             "correo": correo,
             "id_sucursalactiva": id_sucursalactiva,
             "id_estado": id_estado,
+            "nombre": nombre,
+            "apellido_paterno": apellido_paterno,
+            "apellido_materno": apellido_materno,
+            "permisos_actualizados": permisos if permisos is not None else "No modificados",
             "filas_afectadas": filas_afectadas
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# 🔹 Obtener permisos de un usuario específico
+@usuarios_bp.route('/<string:usuario_id>/permisos', methods=['GET'])
+@jwt_required()
+def obtener_permisos_usuario(usuario_id):
+    """Obtener permisos actuales de un usuario específico"""
+    usuario_logueado = get_jwt_identity()
+    if not verificar_permiso_full(usuario_logueado):
+        return jsonify({"error": "No autorizado. Se requiere permiso Full para gestionar usuarios"}), 403
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Verificar que el usuario existe
+        cursor.execute("SELECT id FROM general_dim_usuario WHERE id = %s", (usuario_id,))
+        usuario_existente = cursor.fetchone()
+        if not usuario_existente:
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "Usuario no encontrado"}), 404
+        
+        # Obtener permisos del usuario
+        cursor.execute("""
+            SELECT 
+                up.id_permiso,
+                p.nombre as nombre_permiso,
+                p.id_app,
+                p.id_estado
+            FROM usuario_pivot_permiso_usuario up
+            LEFT JOIN usuario_dim_permiso p ON up.id_permiso = p.id
+            WHERE up.id_usuario = %s
+            ORDER BY p.nombre ASC
+        """, (usuario_id,))
+        
+        permisos = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "usuario_id": usuario_id,
+            "permisos": permisos,
+            "total": len(permisos)
         }), 200
         
     except Exception as e:
@@ -247,6 +358,8 @@ def editar_usuario(usuario_id):
 @jwt_required()
 def eliminar_usuario(usuario_id):
     usuario_logueado = get_jwt_identity()
+    if not verificar_permiso_full(usuario_logueado):
+        return jsonify({"error": "No autorizado. Se requiere permiso Full para gestionar usuarios"}), 403
 
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
@@ -266,6 +379,38 @@ def eliminar_usuario(usuario_id):
         conn.close()
 
         return jsonify({"message": "Usuario eliminado correctamente"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# 🔹 Obtener permisos disponibles para la app (id_app = 3)
+@usuarios_bp.route('/permisos-disponibles', methods=['GET'])
+@jwt_required()
+def obtener_permisos_disponibles():
+    """Obtener permisos disponibles para la app (id_app = 3)"""
+    usuario_id = get_jwt_identity()
+    if not verificar_permiso_full(usuario_id):
+        return jsonify({"error": "No autorizado. Se requiere permiso Full para gestionar usuarios"}), 403
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        cursor.execute("""
+            SELECT id, nombre, id_app, id_estado
+            FROM usuario_dim_permiso 
+            WHERE id_app = 3 AND id_estado = 1
+            ORDER BY nombre ASC
+        """)
+        
+        permisos = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "permisos": permisos,
+            "total": len(permisos)
+        }), 200
+        
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     
