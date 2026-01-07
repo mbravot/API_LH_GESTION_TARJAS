@@ -44,6 +44,10 @@ def get_db_connection():
             user = credentials_part[:colon_pos]
             password = credentials_part[colon_pos + 1:]
             
+            # Decodificar usuario y contraseña (pueden estar URL-encoded)
+            user = unquote(user)
+            password = unquote(password)
+            
             # Parsear el resto (host/database o /database?params)
             unix_socket = None
             host = 'localhost'
@@ -103,32 +107,74 @@ def get_db_connection():
                 connection_params['host'] = host
                 connection_params['port'] = port
             
-            logger.info(f"🔗 Conectando a: host={connection_params.get('host')}, database={database}, unix_socket={unix_socket if unix_socket else 'None'}")
+            logger.info(f"🔗 Conectando a: host={connection_params.get('host')}, user={user}, database={database}, unix_socket={unix_socket if unix_socket else 'None'}")
             
-            return mysql.connector.connect(**connection_params)
+            try:
+                return mysql.connector.connect(**connection_params)
+            except mysql.connector.Error as db_error:
+                # Si la conexión falla, loguear el error y lanzar excepción más clara
+                logger.error(f"❌ Error de conexión a BD: {str(db_error)}")
+                logger.error(f"❌ Parámetros usados: host={connection_params.get('host')}, user={user}, database={database}")
+                raise
             
         except Exception as e:
             # Si falla el parsing, usar configuración anterior (solo loguear una vez)
             global _warning_logged
             if not _warning_logged:
                 logger.warning(f"⚠️ No se pudo parsear DATABASE_URL, usando configuración anterior: {str(e)}")
+                logger.warning(f"⚠️ DATABASE_URL recibida: {url[:50]}..." if len(url) > 50 else f"⚠️ DATABASE_URL recibida: {url}")
                 _warning_logged = True
             
-            # Usar configuración anterior sin modificar
-            return mysql.connector.connect(
-                host=Config.DB_HOST,
-                user=Config.DB_USER,
-                password=Config.DB_PASSWORD,
-                database=Config.DB_NAME,
-                port=Config.DB_PORT
-            )
+            # Intentar usar variables de entorno directamente si están disponibles
+            # Esto es útil cuando DATABASE_URL no se puede parsear pero las variables están disponibles
+            db_user = os.getenv('DB_USER') or Config.DB_USER
+            db_password = os.getenv('DB_PASSWORD') or Config.DB_PASSWORD
+            db_host = os.getenv('DB_HOST') or Config.DB_HOST
+            db_name = os.getenv('DB_NAME') or Config.DB_NAME
+            db_port = int(os.getenv('DB_PORT', Config.DB_PORT))
+            
+            # Validar que tenemos valores válidos
+            if not db_user or not db_password or not db_name:
+                raise ValueError(f"Faltan credenciales de BD: user={db_user}, password={'***' if db_password else None}, database={db_name}")
+            
+            logger.info(f"🔄 Usando fallback: host={db_host}, user={db_user}, database={db_name}, port={db_port}")
+            
+            try:
+                return mysql.connector.connect(
+                    host=db_host,
+                    user=db_user,
+                    password=db_password,
+                    database=db_name,
+                    port=db_port
+                )
+            except mysql.connector.Error as db_error:
+                logger.error(f"❌ Error de conexión en fallback: {str(db_error)}")
+                logger.error(f"❌ Parámetros usados: host={db_host}, user={db_user}, database={db_name}, port={db_port}")
+                raise
     else:
         logger.info("🔄 Usando configuración anterior (sin DATABASE_URL)")
-        # Fallback a la configuración anterior sin modificar
-        return mysql.connector.connect(
-            host=Config.DB_HOST,
-            user=Config.DB_USER,
-            password=Config.DB_PASSWORD,
-            database=Config.DB_NAME,
-            port=Config.DB_PORT
-        )
+        # Intentar usar variables de entorno directamente si están disponibles
+        db_user = os.getenv('DB_USER') or Config.DB_USER
+        db_password = os.getenv('DB_PASSWORD') or Config.DB_PASSWORD
+        db_host = os.getenv('DB_HOST') or Config.DB_HOST
+        db_name = os.getenv('DB_NAME') or Config.DB_NAME
+        db_port = int(os.getenv('DB_PORT', Config.DB_PORT))
+        
+        # Validar que tenemos valores válidos
+        if not db_user or not db_password or not db_name:
+            raise ValueError(f"Faltan credenciales de BD: user={db_user}, password={'***' if db_password else None}, database={db_name}")
+        
+        logger.info(f"🔄 Usando configuración: host={db_host}, user={db_user}, database={db_name}, port={db_port}")
+        
+        try:
+            return mysql.connector.connect(
+                host=db_host,
+                user=db_user,
+                password=db_password,
+                database=db_name,
+                port=db_port
+            )
+        except mysql.connector.Error as db_error:
+            logger.error(f"❌ Error de conexión: {str(db_error)}")
+            logger.error(f"❌ Parámetros usados: host={db_host}, user={db_user}, database={db_name}, port={db_port}")
+            raise
