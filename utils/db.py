@@ -10,6 +10,9 @@ logger = logging.getLogger(__name__)
 _warning_logged = False  # Variable para evitar logging repetitivo
 
 def get_db_connection():
+    # Detectar si estamos en Cloud Run
+    is_cloud_run = os.getenv('K_SERVICE') is not None
+    
     # Usar DATABASE_URL si está disponible (como la API de tickets)
     if hasattr(Config, 'DATABASE_URL') and Config.DATABASE_URL:
         url = Config.DATABASE_URL
@@ -87,17 +90,30 @@ def get_db_connection():
             if not database:
                 raise ValueError("No se encontró el nombre de la base de datos")
             
+            # Si estamos en Cloud Run y no hay unix_socket, intentar obtenerlo de variables de entorno
+            if is_cloud_run and not unix_socket:
+                # Intentar obtener de CLOUD_SQL_CONNECTION_NAME (formato: PROJECT:REGION:INSTANCE)
+                cloud_sql_connection = os.getenv('CLOUD_SQL_CONNECTION_NAME')
+                if cloud_sql_connection:
+                    unix_socket = f'/cloudsql/{cloud_sql_connection}'
+                    logger.info(f"🔗 Usando Cloud SQL connection: {unix_socket}")
+            
             # Construir parámetros de conexión
             connection_params = {
-                'host': host,
                 'user': user,
                 'password': password,
-                'database': database,
-                'port': port
+                'database': database
             }
             
+            # En Cloud Run con unix_socket, usar localhost sin puerto
             if unix_socket:
+                connection_params['host'] = 'localhost'
                 connection_params['unix_socket'] = unix_socket
+            else:
+                connection_params['host'] = host
+                connection_params['port'] = port
+            
+            logger.info(f"🔗 Conectando a: host={connection_params.get('host')}, database={database}, unix_socket={unix_socket if unix_socket else 'None'}")
             
             return mysql.connector.connect(**connection_params)
             
@@ -107,20 +123,43 @@ def get_db_connection():
             if not _warning_logged:
                 logger.warning(f"⚠️ No se pudo parsear DATABASE_URL, usando configuración anterior: {str(e)}")
                 _warning_logged = True
-            return mysql.connector.connect(
-                host=Config.DB_HOST,
-                user=Config.DB_USER,
-                password=Config.DB_PASSWORD,
-                database=Config.DB_NAME,
-                port=Config.DB_PORT
-            )
+            
+            # Si estamos en Cloud Run, intentar usar unix_socket
+            connection_params = {
+                'host': Config.DB_HOST,
+                'user': Config.DB_USER,
+                'password': Config.DB_PASSWORD,
+                'database': Config.DB_NAME,
+                'port': Config.DB_PORT
+            }
+            
+            if is_cloud_run:
+                cloud_sql_connection = os.getenv('CLOUD_SQL_CONNECTION_NAME')
+                if cloud_sql_connection:
+                    connection_params['host'] = 'localhost'
+                    connection_params['unix_socket'] = f'/cloudsql/{cloud_sql_connection}'
+                    connection_params.pop('port', None)  # No usar puerto con unix_socket
+                    logger.info(f"🔗 Cloud Run: Usando unix_socket: {connection_params['unix_socket']}")
+            
+            return mysql.connector.connect(**connection_params)
     else:
         logger.info("🔄 Usando configuración anterior (sin DATABASE_URL)")
         # Fallback a la configuración anterior
-        return mysql.connector.connect(
-            host=Config.DB_HOST,
-            user=Config.DB_USER,
-            password=Config.DB_PASSWORD,
-            database=Config.DB_NAME,
-            port=Config.DB_PORT
-        )
+        connection_params = {
+            'host': Config.DB_HOST,
+            'user': Config.DB_USER,
+            'password': Config.DB_PASSWORD,
+            'database': Config.DB_NAME,
+            'port': Config.DB_PORT
+        }
+        
+        # Si estamos en Cloud Run, intentar usar unix_socket
+        if is_cloud_run:
+            cloud_sql_connection = os.getenv('CLOUD_SQL_CONNECTION_NAME')
+            if cloud_sql_connection:
+                connection_params['host'] = 'localhost'
+                connection_params['unix_socket'] = f'/cloudsql/{cloud_sql_connection}'
+                connection_params.pop('port', None)  # No usar puerto con unix_socket
+                logger.info(f"🔗 Cloud Run: Usando unix_socket: {connection_params['unix_socket']}")
+        
+        return mysql.connector.connect(**connection_params)
