@@ -52,12 +52,6 @@ def get_db_connection():
             if not user or len(user) < 3:
                 raise ValueError(f"Usuario extraído del DATABASE_URL parece inválido: '{user}'")
             
-            # Si hay variables de entorno disponibles, preferirlas sobre el DATABASE_URL parseado
-            # Esto es especialmente útil en Cloud Run donde las variables pueden estar mejor configuradas
-            if os.getenv('DB_USER'):
-                logger.info(f"🔄 Variable DB_USER encontrada, usando en lugar de usuario del DATABASE_URL")
-                raise ValueError("Usar variables de entorno en lugar de DATABASE_URL")
-            
             # Parsear el resto (host/database o /database?params)
             unix_socket = None
             host = 'localhost'
