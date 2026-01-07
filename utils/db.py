@@ -48,6 +48,16 @@ def get_db_connection():
             user = unquote(user)
             password = unquote(password)
             
+            # Validar que el usuario extraído sea razonable (no esté vacío o muy corto)
+            if not user or len(user) < 3:
+                raise ValueError(f"Usuario extraído del DATABASE_URL parece inválido: '{user}'")
+            
+            # Si hay variables de entorno disponibles, preferirlas sobre el DATABASE_URL parseado
+            # Esto es especialmente útil en Cloud Run donde las variables pueden estar mejor configuradas
+            if os.getenv('DB_USER'):
+                logger.info(f"🔄 Variable DB_USER encontrada, usando en lugar de usuario del DATABASE_URL")
+                raise ValueError("Usar variables de entorno en lugar de DATABASE_URL")
+            
             # Parsear el resto (host/database o /database?params)
             unix_socket = None
             host = 'localhost'
@@ -127,11 +137,31 @@ def get_db_connection():
             
             # Intentar usar variables de entorno directamente si están disponibles
             # Esto es útil cuando DATABASE_URL no se puede parsear pero las variables están disponibles
-            db_user = os.getenv('DB_USER') or Config.DB_USER
-            db_password = os.getenv('DB_PASSWORD') or Config.DB_PASSWORD
-            db_host = os.getenv('DB_HOST') or Config.DB_HOST
-            db_name = os.getenv('DB_NAME') or Config.DB_NAME
-            db_port = int(os.getenv('DB_PORT', Config.DB_PORT))
+            # Priorizar variables de entorno sobre Config para Cloud Run
+            db_user = os.getenv('DB_USER')
+            if not db_user:
+                db_user = Config.DB_USER
+            
+            db_password = os.getenv('DB_PASSWORD')
+            if not db_password:
+                db_password = Config.DB_PASSWORD
+                
+            db_host = os.getenv('DB_HOST')
+            if not db_host:
+                db_host = Config.DB_HOST
+                
+            db_name = os.getenv('DB_NAME')
+            if not db_name:
+                db_name = Config.DB_NAME
+                
+            db_port_str = os.getenv('DB_PORT')
+            if db_port_str:
+                try:
+                    db_port = int(db_port_str)
+                except ValueError:
+                    db_port = Config.DB_PORT
+            else:
+                db_port = Config.DB_PORT
             
             # Validar que tenemos valores válidos
             if not db_user or not db_password or not db_name:
@@ -154,11 +184,31 @@ def get_db_connection():
     else:
         logger.info("🔄 Usando configuración anterior (sin DATABASE_URL)")
         # Intentar usar variables de entorno directamente si están disponibles
-        db_user = os.getenv('DB_USER') or Config.DB_USER
-        db_password = os.getenv('DB_PASSWORD') or Config.DB_PASSWORD
-        db_host = os.getenv('DB_HOST') or Config.DB_HOST
-        db_name = os.getenv('DB_NAME') or Config.DB_NAME
-        db_port = int(os.getenv('DB_PORT', Config.DB_PORT))
+        # Priorizar variables de entorno sobre Config para Cloud Run
+        db_user = os.getenv('DB_USER')
+        if not db_user:
+            db_user = Config.DB_USER
+            
+        db_password = os.getenv('DB_PASSWORD')
+        if not db_password:
+            db_password = Config.DB_PASSWORD
+            
+        db_host = os.getenv('DB_HOST')
+        if not db_host:
+            db_host = Config.DB_HOST
+            
+        db_name = os.getenv('DB_NAME')
+        if not db_name:
+            db_name = Config.DB_NAME
+            
+        db_port_str = os.getenv('DB_PORT')
+        if db_port_str:
+            try:
+                db_port = int(db_port_str)
+            except ValueError:
+                db_port = Config.DB_PORT
+        else:
+            db_port = Config.DB_PORT
         
         # Validar que tenemos valores válidos
         if not db_user or not db_password or not db_name:
