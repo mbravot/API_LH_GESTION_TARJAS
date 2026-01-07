@@ -183,23 +183,54 @@ def cambiar_estado_actividad(actividad_id):
         nuevo_estado = data.get('id_estadoactividad')
 
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(dictionary=True)
 
-        # Solo actualizar el estado - permitir editar actividades de cualquier usuario
-        sql = """
+        # Obtener la sucursal activa del usuario
+        cursor.execute("SELECT id_sucursalactiva FROM general_dim_usuario WHERE id = %s", (usuario_id,))
+        usuario = cursor.fetchone()
+
+        if not usuario or usuario['id_sucursalactiva'] is None:
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "No se encontró la sucursal activa del usuario"}), 400
+
+        id_sucursal = usuario['id_sucursalactiva']
+
+        # Verificar que la actividad existe y pertenece a la sucursal del usuario
+        cursor.execute("""
+            SELECT id, id_sucursalactiva 
+            FROM tarja_fact_actividad 
+            WHERE id = %s
+        """, (actividad_id,))
+        
+        actividad = cursor.fetchone()
+        
+        if not actividad:
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "Actividad no encontrada"}), 404
+
+        # Verificar que la actividad pertenezca a la sucursal del usuario
+        if actividad['id_sucursalactiva'] != id_sucursal:
+            cursor.close()
+            conn.close()
+            return jsonify({
+                "error": "No tienes permiso para cambiar el estado de esta actividad. No pertenece a tu sucursal."
+            }), 403
+
+        # Actualizar el estado - solo si pertenece a la sucursal del usuario
+        cursor.execute("""
             UPDATE tarja_fact_actividad 
             SET id_estadoactividad = %s
-            WHERE id = %s
-        """
-        valores = (nuevo_estado, actividad_id)
+            WHERE id = %s AND id_sucursalactiva = %s
+        """, (nuevo_estado, actividad_id, id_sucursal))
 
-        cursor.execute(sql, valores)
         conn.commit()
 
         if cursor.rowcount == 0:
             cursor.close()
             conn.close()
-            return jsonify({"error": "Actividad no encontrada"}), 404
+            return jsonify({"error": "No se pudo actualizar el estado de la actividad"}), 500
 
         cursor.close()
         conn.close()

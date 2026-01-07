@@ -3,119 +3,117 @@ from config import Config
 import os
 import re
 import logging
+from urllib.parse import urlparse, unquote
 
 # Configurar logging
 logger = logging.getLogger(__name__)
+_warning_logged = False  # Variable para evitar logging repetitivo
 
 def get_db_connection():
     # Usar DATABASE_URL si está disponible (como la API de tickets)
     if hasattr(Config, 'DATABASE_URL') and Config.DATABASE_URL:
-        logger.info(f"🔍 DATABASE_URL: {Config.DATABASE_URL}")
-        
-        # Parsear DATABASE_URL con formato de Cloud SQL
-        # Formato: mysql+pymysql://user:password@/database?unix_socket=/cloudsql/instance
         url = Config.DATABASE_URL
         
-        # Extraer componentes usando regex corregido
-        pattern = r'mysql\+pymysql://([^:]+):([^@]+)@/([^?]+)\?unix_socket=([^/]+)/(.+)'
-        match = re.match(pattern, url)
-        
-        if match:
-            user, password, database, socket_prefix, instance = match.groups()
-            logger.info(f"✅ Parseado correctamente:")
-            logger.info(f"   User: {user}")
-            logger.info(f"   Database: {database}")
-            logger.info(f"   Instance: {instance}")
+        try:
+            # Remover el prefijo mysql+pymysql://
+            if url.startswith('mysql+pymysql://'):
+                url_clean = url[17:]  # Remover 'mysql+pymysql://'
+            elif url.startswith('mysql://'):
+                url_clean = url[8:]  # Remover 'mysql://'
+            else:
+                url_clean = url
             
-            # Para Cloud SQL con unix_socket, usar localhost
+            # Parsear manualmente para manejar caracteres especiales en la contraseña
+            # Formato esperado: user:password@host/database o user:password@/database?unix_socket=...
+            
+            # Buscar el último @ que separa credenciales del resto (puede haber @ en la contraseña)
+            # Usar rfind para encontrar el último @
+            at_pos = url_clean.rfind('@')
+            
+            if at_pos == -1:
+                raise ValueError("No se encontró @ en DATABASE_URL")
+            
+            credentials_part = url_clean[:at_pos]
+            rest_part = url_clean[at_pos + 1:]
+            
+            # Separar usuario y contraseña (el primer : separa usuario de contraseña)
+            colon_pos = credentials_part.find(':')
+            if colon_pos == -1:
+                raise ValueError("No se encontró : en las credenciales")
+            
+            user = credentials_part[:colon_pos]
+            password = credentials_part[colon_pos + 1:]
+            
+            # Parsear el resto (host/database o /database?params)
+            unix_socket = None
+            host = 'localhost'
+            port = 3306
+            database = None
+            
+            if rest_part.startswith('/'):
+                # Formato: /database o /database?unix_socket=...
+                if '?' in rest_part:
+                    database_part, query_part = rest_part[1:].split('?', 1)
+                    database = database_part
+                    
+                    # Parsear query params
+                    params = {}
+                    for param in query_part.split('&'):
+                        if '=' in param:
+                            key, value = param.split('=', 1)
+                            params[key] = value
+                    
+                    if 'unix_socket' in params:
+                        unix_socket = params['unix_socket']
+                        if not unix_socket.startswith('/cloudsql/'):
+                            unix_socket = f'/cloudsql/{unix_socket}'
+                else:
+                    database = rest_part[1:]
+            else:
+                # Formato: host:port/database o host/database
+                if '/' in rest_part:
+                    host_part, database = rest_part.split('/', 1)
+                    if ':' in host_part:
+                        host, port_str = host_part.split(':', 1)
+                        try:
+                            port = int(port_str)
+                        except ValueError:
+                            port = 3306
+                    else:
+                        host = host_part
+                else:
+                    host = rest_part
+            
+            if not database:
+                raise ValueError("No se encontró el nombre de la base de datos")
+            
+            # Construir parámetros de conexión
             connection_params = {
-                'host': 'localhost',
+                'host': host,
                 'user': user,
                 'password': password,
                 'database': database,
-                'port': 3306,
-                'unix_socket': f'/cloudsql/{instance}'
+                'port': port
             }
-            logger.info(f"🔗 Parámetros de conexión: {connection_params}")
+            
+            if unix_socket:
+                connection_params['unix_socket'] = unix_socket
             
             return mysql.connector.connect(**connection_params)
-        else:
-            logger.error(f"❌ No se pudo parsear DATABASE_URL: {url}")
-            logger.error(f"❌ Pattern no coincidió")
             
-            # Intentar parsear manualmente
-            try:
-                # Remover mysql+pymysql://
-                url_clean = url.replace('mysql+pymysql://', '')
-                
-                # Separar credenciales y resto
-                if '@/' in url_clean:
-                    credentials, rest = url_clean.split('@/', 1)
-                    user, password = credentials.split(':', 1)
-                    
-                    # Separar database y parámetros
-                    if '?' in rest:
-                        database, params = rest.split('?', 1)
-                        
-                        # Extraer unix_socket
-                        if 'unix_socket=' in params:
-                            socket_part = params.split('unix_socket=', 1)[1]
-                            # Remover /cloudsql/ si ya está presente
-                            if socket_part.startswith('/cloudsql/'):
-                                instance = socket_part.replace('/cloudsql/', '')
-                            else:
-                                instance = socket_part
-                            
-                            logger.info(f"✅ Parseado manualmente:")
-                            logger.info(f"   User: {user}")
-                            logger.info(f"   Database: {database}")
-                            logger.info(f"   Instance: {instance}")
-                            
-                            connection_params = {
-                                'host': 'localhost',
-                                'user': user,
-                                'password': password,
-                                'database': database,
-                                'port': 3306,
-                                'unix_socket': f'/cloudsql/{instance}'
-                            }
-                            logger.info(f"🔗 Parámetros de conexión: {connection_params}")
-                            
-                            return mysql.connector.connect(**connection_params)
-                
-                logger.error(f"❌ Parseado manual también falló")
-                
-            except Exception as e:
-                logger.error(f"❌ Error en parseado manual: {str(e)}")
-            
-            # Fallback para formato simple
-            url = url.replace('mysql+pymysql://', '')
-            if '@' in url:
-                credentials, rest = url.split('@', 1)
-                user, password = credentials.split(':', 1)
-                host, database = rest.split('/', 1)
-                
-                logger.info(f"🔄 Usando fallback con host: {host}")
-                return mysql.connector.connect(
-                    host=host,
-                    user=user,
-                    password=password,
-                    database=database,
-                    port=3306
-                )
-            else:
-                # Formato sin host (localhost implícito)
-                credentials, database = url.split('/', 1)
-                user, password = credentials.split(':', 1)
-                
-                logger.info(f"🔄 Usando fallback localhost")
-                return mysql.connector.connect(
-                    host='localhost',
-                    user=user,
-                    password=password,
-                    database=database,
-                    port=3306
-                )
+        except Exception as e:
+            # Si falla el parsing, usar configuración anterior (solo loguear una vez)
+            global _warning_logged
+            if not _warning_logged:
+                logger.warning(f"⚠️ No se pudo parsear DATABASE_URL, usando configuración anterior: {str(e)}")
+                _warning_logged = True
+            return mysql.connector.connect(
+                host=Config.DB_HOST,
+                user=Config.DB_USER,
+                password=Config.DB_PASSWORD,
+                database=Config.DB_NAME,
+                port=Config.DB_PORT
+            )
     else:
         logger.info("🔄 Usando configuración anterior (sin DATABASE_URL)")
         # Fallback a la configuración anterior

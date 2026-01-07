@@ -1147,24 +1147,21 @@ def obtener_unidad_default_labor(id_labor):
 
 # Obtener lista de porcentajes de contratista
 @opciones_bp.route('/porcentajescontratista', methods=['GET'])
+@opciones_bp.route('/porcentajes-contratista', methods=['GET'])  # Alias con guión para compatibilidad
 @jwt_required()
 def get_porcentajes_contratista():
     conn = None
     cursor = None
     try:
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(dictionary=True)
         cursor.execute("""
             SELECT id, porcentaje, id_empresa
             FROM general_dim_porcentajecontratista
             ORDER BY porcentaje ASC
         """)
         porcentajes = cursor.fetchall()
-        return jsonify([{
-            'id': p[0],
-            'porcentaje': p[1],
-            'id_empresa': p[2]
-        } for p in porcentajes]), 200
+        return jsonify(porcentajes), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     finally:

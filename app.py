@@ -15,9 +15,11 @@ def create_app():
         r"/*": {
             "origins": [
                 "http://localhost:*", 
+                "http://localhost:59494",
                 "http://127.0.0.1:*", 
                 "http://192.168.1.52:*", 
                 "http://192.168.1.208:*", 
+                "http://192.168.1.40:*",
                 "http://192.168.1.60:*",
                 "https://api-lh-gestion-tarjas-927498545444.us-central1.run.app",
                 "https://gestion-la-hornilla.web.app",
@@ -63,6 +65,7 @@ def create_app():
     from blueprints.sueldos import sueldos_bp
     from blueprints.sucursales import sucursales_bp
     from blueprints.tarja_propio import tarja_propio_bp
+    from blueprints.cambio_porcentaje import cambio_porcentaje_bp
 
     
     # Registrar blueprints
@@ -86,6 +89,7 @@ def create_app():
     app.register_blueprint(sueldos_bp, url_prefix='/api/sueldos')
     app.register_blueprint(sucursales_bp, url_prefix='/api/sucursal')
     app.register_blueprint(tarja_propio_bp, url_prefix='/api/tarja-propio')
+    app.register_blueprint(cambio_porcentaje_bp, url_prefix='/api/cambio-porcentaje')
     
     # Crear un nuevo blueprint para las rutas raíz
     root_bp = Blueprint('root_bp', __name__)
