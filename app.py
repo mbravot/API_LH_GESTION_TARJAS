@@ -66,6 +66,7 @@ def create_app():
     from blueprints.sucursales import sucursales_bp
     from blueprints.tarja_propio import tarja_propio_bp
     from blueprints.cambio_porcentaje import cambio_porcentaje_bp
+    from blueprints.cierre_tarja import cierre_tarja_bp
 
     
     # Registrar blueprints
@@ -90,6 +91,7 @@ def create_app():
     app.register_blueprint(sucursales_bp, url_prefix='/api/sucursal')
     app.register_blueprint(tarja_propio_bp, url_prefix='/api/tarja-propio')
     app.register_blueprint(cambio_porcentaje_bp, url_prefix='/api/cambio-porcentaje')
+    app.register_blueprint(cierre_tarja_bp, url_prefix='/api/cierre-tarjas')
     
     # Crear un nuevo blueprint para las rutas raíz
     root_bp = Blueprint('root_bp', __name__)
