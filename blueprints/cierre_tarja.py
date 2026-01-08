@@ -69,6 +69,7 @@ def obtener_actividades_cierre():
             INNER JOIN tarja_dim_estadoactividad ea ON a.id_estadoactividad = ea.id
             WHERE a.id_estadoactividad IN (3, 4)
             AND a.id_sucursalactiva = %s
+            GROUP BY a.id
             ORDER BY a.fecha DESC, l.nombre ASC
         """
 
